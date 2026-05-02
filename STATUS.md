@@ -7,7 +7,9 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 ## 2026-05-02 — M0 (Skeleton + PWA shell)
 
 ### Active milestone
-**M0** — branch `feat/m0-skeleton`, 5 commits ahead of `main`. Code work complete; awaiting owner manual gates before PR.
+**M0** — code work complete on `main` (the first push merged `feat/m0-skeleton` directly to `main`, so there is no separate M0 PR). Awaiting owner manual gates: real-phone install, screen recording, Lighthouse on Vercel preview.
+
+> Process note: the brief calls for feature-branch + PR workflow (§12.2). M0's direct-to-main flow was a one-time first-push of an empty repo. **M1 onward uses feature branches and PRs as documented in the brief.**
 
 ### Done this session
 
@@ -29,18 +31,13 @@ The remaining M0 DoD items (§13) all require physical owner action:
 
 1. **`bunx convex dev`** from `/home/nic/workspace/backpacker/`. The Convex cloud project "backpacker" already exists in your account; this run will detect it, write `convex/_generated/*`, and populate `NEXT_PUBLIC_CONVEX_URL` in `.env.local`. Browser auth on first run.
 2. **Verify the Convex round-trip**. Once `bunx convex dev` is running, in a separate terminal: `bunx convex run hello:getGreeting` should print `"hello, traveler"`. That's the M0 DoD's "one query and one mutation working end-to-end" — proven via the CLI rather than the splash, because wiring `useQuery` into the splash without a populated env var would crash the page on a fresh clone. (Game Designer flagged this; see Followups for the M1 fix.)
-3. **Push to GitHub.** No remote is configured yet. Create the repo, then:
-   ```bash
-   git remote add origin git@github.com:<owner>/backpacker.git
-   git push -u origin main
-   git push -u origin feat/m0-skeleton
-   ```
-4. **Connect the GitHub repo to Vercel** through the Vercel dashboard. Add `NEXT_PUBLIC_CONVEX_URL` as an env var in the Vercel project (pull from `.env.local`). Once connected, every PR auto-creates a preview URL.
-5. **Switch the Lighthouse workflow to the Vercel preview URL.** Currently `.github/workflows/lighthouse.yml` runs LHCI against `bun run start` locally — there's a `TODO(owner)` comment pointing to where the preview URL replaces it. (A passing local LHCI does NOT mean the deployed preview will pass — different CDN, different cache state, different cold-start.)
-6. **Real-phone install on iPhone (Safari) and Android (Chrome).** Process is in the README. Confirm: warm-paper status bar tint, no Safari/Chrome chrome in standalone mode, splash content not under the notch or home indicator, maskable icon shape works across launcher masks (long-press the app icon and try a few launcher mask shapes on Android).
-7. **Capture a portrait screen recording on a real phone** showing the splash + a tap on Begin journey. iOS: Settings → Control Center → add Screen Recording. Android: quick settings → Screen Record tile. Specifics in README.
-8. **Run Lighthouse mobile against the Vercel preview URL.** Chrome DevTools → Lighthouse → Mobile preset. Screenshot Performance + PWA + Accessibility scores into the M0 PR description. CI will be the durable receipt; the screenshot is for human readers of the PR.
-9. **Open the M0 PR.** Once steps 1–8 are done, the M0 PR can open with: the screen recording, the Lighthouse scores, and a link to this STATUS.md entry. PR title: `feat(m0): skeleton + PWA shell`. Reply to me when you're ready and I'll draft the PR body and run `gh pr create`.
+3. ~~**Push to GitHub.**~~ Done. The first push renamed `feat/m0-skeleton` to `main` locally and pushed to `origin/main` — M0 ships directly on `main` rather than via PR. M1 onward uses feature branches.
+4. **Connect the GitHub repo to Vercel** through the Vercel dashboard. Add `NEXT_PUBLIC_CONVEX_URL` as a Vercel env var (Preview + Production scopes — pull the value from `.env.local`). Once connected, every push to `main` produces a Production deployment and every future PR produces a Preview deployment.
+5. ~~**Switch the Lighthouse workflow to the Vercel preview URL.**~~ Done — `.github/workflows/lighthouse.yml` now triggers on `deployment_status` and runs LHCI against the Vercel preview URL. Note: the workflow filters on `environment == 'Preview'`, so the production deploy from `main` itself will NOT trigger LHCI. Once we open the first M1 feature-branch PR, that PR's Vercel preview will trigger the first real LHCI run.
+6. **Real-phone install on iPhone (Safari) and Android (Chrome).** Process is in the README. Confirm: warm-paper status bar tint, no Safari/Chrome chrome in standalone mode, splash content not under the notch or home indicator, maskable icon shape works across launcher masks (long-press the app icon on Android and try a few launcher mask shapes).
+7. **Capture a portrait screen recording on a real phone** showing the splash + a tap on Begin journey. iOS: Settings → Control Center → add Screen Recording. Android: quick settings → Screen Record tile. Specifics in README. Stash the recording somewhere I can reference (paste into the M0 retro thread / drop a path).
+8. **Run Lighthouse mobile against the Vercel production URL** (since M0 is on main, there's no preview URL — production is the deployed artifact). Chrome DevTools → Lighthouse → Mobile preset. Screenshot Performance + PWA + Accessibility scores. Compare against the §6.7 budgets: Performance ≥90, PWA ≥90, Accessibility ≥95.
+9. **Tag the milestone.** Once 6–8 are confirmed and you're satisfied, run `git tag m0-done && git push --tags`. That's the durable marker that M0 is done — the brief's §14.2 mentions `mN-start` / `mN-done` tags as the source of truth for "what milestone are we on."
 
 ### Followups captured (not M0 work)
 

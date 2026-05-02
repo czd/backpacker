@@ -59,3 +59,6 @@ lhci-results/
 /public/sw.js.map
 /public/workbox-*.js
 /public/workbox-*.js.map
+
+# Convex generated bindings (regenerated on every `bunx convex dev`)
+/convex/_generated/
