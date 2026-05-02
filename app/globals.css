@@ -140,6 +140,49 @@
   --sidebar-ring: oklch(0.55 0.06 220);
 }
 
+/*
+ * Auto-follow the OS color scheme: when the device is in dark mode and no
+ * explicit `.dark` (or future `.light`) class is set, apply the dark tokens
+ * directly on `:root`. Tokens duplicate the `.dark` block below; that block
+ * stays so a future user-facing theme toggle (M5 polish) can opt into dark
+ * regardless of OS preference. Keep both blocks in sync.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.2 0.018 75);
+    --foreground: oklch(0.94 0.015 80);
+    --card: oklch(0.235 0.02 75);
+    --card-foreground: oklch(0.94 0.015 80);
+    --popover: oklch(0.235 0.02 75);
+    --popover-foreground: oklch(0.94 0.015 80);
+    --primary: oklch(0.72 0.08 215);
+    --primary-foreground: oklch(0.18 0.018 75);
+    --secondary: oklch(0.3 0.022 75);
+    --secondary-foreground: oklch(0.94 0.015 80);
+    --muted: oklch(0.28 0.02 75);
+    --muted-foreground: oklch(0.72 0.022 78);
+    --accent: oklch(0.32 0.025 78);
+    --accent-foreground: oklch(0.94 0.015 80);
+    --destructive: oklch(0.65 0.15 35);
+    --border: oklch(0.94 0.015 80 / 10%);
+    --input: oklch(0.94 0.015 80 / 14%);
+    --ring: oklch(0.6 0.06 215);
+    --chart-1: oklch(0.7 0.09 215);
+    --chart-2: oklch(0.72 0.1 60);
+    --chart-3: oklch(0.65 0.08 150);
+    --chart-4: oklch(0.72 0.1 30);
+    --chart-5: oklch(0.6 0.07 280);
+    --sidebar: oklch(0.235 0.02 75);
+    --sidebar-foreground: oklch(0.94 0.015 80);
+    --sidebar-primary: oklch(0.72 0.08 215);
+    --sidebar-primary-foreground: oklch(0.18 0.018 75);
+    --sidebar-accent: oklch(0.32 0.025 78);
+    --sidebar-accent-foreground: oklch(0.94 0.015 80);
+    --sidebar-border: oklch(0.94 0.015 80 / 10%);
+    --sidebar-ring: oklch(0.6 0.06 215);
+  }
+}
+
 .dark {
   --background: oklch(0.2 0.018 75);
   --foreground: oklch(0.94 0.015 80);
