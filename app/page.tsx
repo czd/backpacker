@@ -12,7 +12,9 @@ export default async function HomePage() {
   return (
     <main className="flex min-h-dvh w-full flex-col items-center justify-center px-6">
       <div className="flex w-full max-w-[430px] flex-col items-center gap-12 py-16 text-center">
-        <h1 className="text-5xl font-semibold tracking-tight">{t("title")}</h1>
+        <h1 className="font-heading text-5xl font-medium tracking-tight">
+          {t("title")}
+        </h1>
         <BeginJourneyButton label={t("begin")} />
       </div>
     </main>
