@@ -4,6 +4,71 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-02 — M1 PR1 (Convex POI schema + Lisbon seed)
+
+### Active milestone
+**M1** — branch `feat/m1-lisbon-map`. PR1 (data layer) done on the branch. PR2 (MapLibre + cozy style + gestures) up next.
+
+### Done this session (M1 PR1)
+- ADR-002: MapTiler chosen as M1 tile provider (resolves AGENTS.md §15 open question). API key in `.env.local` (gitignored).
+- ADR-003: Lodging POIs are fictional; landmarks / transit / museums / named public spaces / historic public-domain buildings use real names. Narrow exception for historic-literary pensões (Pensão Londres-style cultural landmarks).
+- Convex `pois` table schema + `by_city` / `by_city_slug` indexes; `POI_TYPES` const exported.
+- Public query `getPoisByCity(city)`.
+- Internal mutation `seedLisbon` (idempotent), seeded with **5 Lisbon POIs reviewed by Geographer + Anthropologist + Historian** per §9.3:
+  - `lisbon-baixa-hostel` — fictional Pensão Estrela do Tejo (Baixa walk-up)
+  - `lisbon-aeroporto` — Aeroporto Humberto Delgado (still called Portela locally)
+  - `miradouro-de-santa-catarina` — the scruffy backpacker miradouro (anti-postcard, Adamastor adjacent)
+  - `castelo-de-sao-jorge` — Iron Age → Roman → Moorish → royal → barracks → ruin → 1940s Salazar restoration
+  - `mercado-da-ribeira` — the 1882 building primary; Time Out (2014) is a tenant
+- Vitest test for the seed array (length, fields, types, lat/lng bbox, slug uniqueness). 6 tests passing.
+- Retired `convex/hello.ts` (M0 placeholder).
+
+### Blocked on owner (M1 PR1 hand-off)
+**Run `bunx convex run seed:seedLisbon`** in your Convex CLI. The schema and functions auto-deploy as you save in the `bunx convex dev` terminal; the seed needs an explicit run. Idempotent — safe to re-run. Expected output: `{ inserted: 5, existing: 0 }` first time, `{ inserted: 0, existing: 5 }` thereafter.
+
+### M0 — still pending owner closure
+No code work left. Manual gates remaining (full list in the M0 entry below):
+- Vercel connect + `NEXT_PUBLIC_CONVEX_URL` env var (Preview + Production)
+- Portrait screen recording on a real phone
+- Lighthouse mobile against the deployed production URL
+- `git tag m0-done && git push --tags`
+
+### Cross-cutting flags graduated from academic review
+
+**For M2+ (cultural / authoring):**
+- **§9.3 hostel-naming policy now codified in ADR-003.** Apply to Tokyo and Marrakech in their own naming conventions when those cities ship.
+- **NPC names must be Lisboeta, not generic Iberian.** First names: *Tiago, Rui, Joana, Inês, Beatriz, Madalena, Francisco, André, Sofia, Mariana*. Last names: *Silva, Santos, Pereira, Oliveira, Rodrigues, Almeida, Ferreira* (double surnames are the norm). For Cape Verdean / Angolan / Mozambican-Lisboeta NPCs (which **must** appear by M3 — Lisbon's Africanness is currently absent from the M1 POI set): *Évora, Lopes, Tavares, Mendes, Cardoso* are common surnames in those communities. Avoid Spanish-coded names (*Pablo, Diego, Carmen, Lucia*) — frequent English-speaker confusion.
+- **European Portuguese only, never Brazilian.** *Pequeno-almoço* (not *café da manhã*); *autocarro* (not *ônibus*); *casa de banho* (not *banheiro*); *fixe* (not *legal*); *bica* (Lisbon-specific) not *cafezinho*. Different *você*/*tu* register. Get a pt-PT-native review pass before any M3 dialogue ships. When localization arrives post-MVP: Portuguese is `pt-PT`; `pt-BR` is a separate locale if ever added.
+- **Adamastor at Santa Catarina goes in M3 NPC dialogue, not M1 description.** "Encontramo-nos no Adamastor" is the most Lisboeta sentence possible.
+- **The 1938–40 Salazar restoration of Castelo de São Jorge MUST land by M3 (NPC) or M4 (journal).** Without it, the project unintentionally repeats Estado Novo heritage propaganda. The M1 description anchors it ("partly a 1940s restoration") — surface in narrative.
+- **Time Out / Mercado da Ribeira deserves an NPC counterweight in M3.** Suggested: a morning fishmonger from the still-working produce half who has feelings about the food court half. This is how the M1 description's "honest framing" earns its keep.
+- **Three Lisboeta historical realities to handle without flinching, with date specificity:** 1 November 1755 (earthquake, All Saints' Day — the religious context matters); 13 February 1965 (Delgado assassination by PIDE); 25 April 1974 (Carnation Revolution / *Grândola, Vila Morena* / 25 de Abril bridge rename). Don't euphemize PIDE.
+- **Colonial legacy needs an explicit ADR before any Belém POI** (Jerónimos / Torre de Belém / Padrão dos Descobrimentos). Empire is why Lisbon eats *cachupa* and listens to *kizomba* and has the demographic mix it does — that's the honest frame, neither glorification nor guilt-monologue.
+- **Gentrification is contemporary.** M3 NPC writing should not pretend it's 1995 Lisbon. At minimum: one NPC whose family was pushed out of the bairro should exist.
+- **Signature local phrase for M4 Phrasebook:** *Está-se bem* — "what you say when you don't want to leave the table yet." Daytime, social, present-tense counterpart to *saudade*. Use this as the Lisbon entry.
+
+**For M1 PR2+ (technical / spatial):**
+- **Topography is a first-class M1 design constraint, not polish.** Lisbon's three hill-valley-hill structure is the spatial story the player must feel. Recommend hillshade overlay or gentle 3D tilt in the MapLibre style — preserves "world is the protagonist" weight.
+- **Walking distances are short but slow** in central Lisbon (90m of vertical takes a 900m walk to 25min). If the M1 fast-travel "dotted line" animation duration is tied to straight-line distance, the castle leg will feel wrong. Suggest a per-POI travel-cost factor or include elevation in the distance calc. Game Designer call.
+- **Golden hour reads west.** Santa Catarina faces the river and the 25 de Abril bridge — sunset palette there is different from the castle (east side, lit from behind). Calibrate M1's day/night transition with this in mind. Whimsy Injector note for M5.
+- **Five POIs hit the per-city checklist (§9.2) minimum** but the spatial composition leaves room for: an Alfama POI (fado tavern / mercearia / Sé), a Belém POI (Jerónimos / Torre / Pastéis de Belém), and a job-board / employment POI for M2. **Pick future POIs for gaps in the temporal arc** (Belém = 1500s maritime; Carmo = 1755 earthquake memorial; Alfama = medieval-Moorish density), not for trendy-neighborhood coverage. The current 5 already span Iron Age → 2016.
+
+**For M2+ (foundational technical):**
+- **Convex auth wiring (Clerk per ADR-001).** Anonymous → linked-account flow needs verification before any save-state mutations depend on identity. Brief §7.6 requires "one-click anonymous play that can be later linked to an account."
+- **JS bundle budget enforcement.** `lighthouserc.json`'s `total-byte-weight` is a page budget, not §6.7's JS-only 200KB-gzipped budget. Add `size-limit` or `bundlewatch` against `.next/static/chunks/*.js` before M2 ships real game code.
+- **Locale shape.** `i18n/request.ts` hardcodes `"en"`. When Norwegian/Swedish (or pt-PT) arrive, locale needs a route segment or cookie, not a constant.
+- **next-pwa successor.** `next-pwa@^5.6.0` is JS-only and webpack-only. Maintained successors `@ducanh2912/next-pwa` (typed) or `@serwist/next` are swap candidates when SW config grows. Removing `--webpack` from `next build` silently breaks PWA installability — do not remove without a successor in place.
+
+**For M5 polish:**
+- Trim Fraunces axes to actually-used (`opsz` only, currently loads `["opsz", "SOFT", "WONK"]`).
+- Theme toggle — light/dark `.dark` class block already wired; needs a UI toggle and a localStorage persistence. M5 polish work.
+- Consider a 25 de Abril in-game holiday — joy, not history dump (*Grândola, Vila Morena*, carnations). Whimsy Injector territory.
+
+### Next session
+M1 PR2: MapLibre + cozy warm style centered on Lisbon + gesture mitigation (`touch-action`, no pull-to-refresh inside map). Frontend Developer + UI Designer + Mobile App Builder.
+
+---
+
 ## 2026-05-02 — M0 (Skeleton + PWA shell)
 
 ### Active milestone

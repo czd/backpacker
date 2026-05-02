@@ -61,3 +61,38 @@ The API key is stored as `NEXT_PUBLIC_MAPTILER_KEY` in `.env.local` (gitignored)
 - Switching providers is moderate-cost: tile URL pattern changes, style JSON references the new sprite/glyph sources. If MapTiler ever degrades or pricing changes, Stadia is the most natural fallback.
 - AGENTS.md §15 is updated to mark this open question as resolved.
 
+---
+
+## ADR-003: Lodging POIs are fictional; landmarks/transit/museums use real names
+
+Date: 2026-05-02
+Status: Accepted
+
+### Context
+
+AGENTS.md §9.3 says: "Real names are used only for genuinely public landmarks; NPCs are fictional." The line is clear about NPCs but ambiguous about businesses — a hostel, a restaurant, a coffee shop. M1 PR1 surfaced the question concretely: should the player's first hostel be a real, named, currently-operating Lisbon business (the original shortlist had "Lisbon Destination Hostel"), or a fictional venue?
+
+The Anthropologist and Historian agents reviewed independently and agreed on a policy. Recording it as an ADR so M2/M3+ doesn't relitigate.
+
+### Decision
+
+**Default:** All **lodging** POIs (hostels, pensões, hotels, couch-surf NPCs' apartments) are **fictional**. Only **landmarks, transit hubs, museums, named public spaces, and historic public-domain buildings** use real names.
+
+**Narrow exception:** Historic guesthouses with their own documented literary or cultural history that *function as landmarks* (e.g. Lisbon's Pensão Londres in Bairro Alto, a meeting point for Pessoa, Saramago, and the post-25-de-Abril cultural scene) may use real names. The test is whether the building-as-institution shows up in cultural memory, not whether it currently rents rooms. M1 has no instances; document for M2+.
+
+Practical mapping at M1 (Lisbon):
+- `Pensão Estrela do Tejo` — fictional. Naming follows the Portuguese-pensão convention (celestial / maritime / regional metaphor).
+- `Aeroporto Humberto Delgado` — real (transit hub).
+- `Miradouro de Santa Catarina` — real (named public space).
+- `Castelo de São Jorge` — real (landmark).
+- `Mercado da Ribeira` — real (named historic building; the Time Out Market food-court half is a tenant of the building, not the building itself).
+
+### Consequences
+
+- **Risk reduction:** A real hostel doesn't get a vote on how a game NPC speaks for it. Even sympathetic portrayal is appropriation. Fiction sidesteps liability and consent concerns.
+- **Temporal robustness:** Real hostels close, change hands, change character. A player two years post-launch hits the in-game version with no priors.
+- **NPC freedom:** Fictional lodging means NPCs (receptionists, owners, fellow backpackers) can have any backstory the Narrative Designer needs without implicating real staff.
+- **Naming style:** Fictional Portuguese venues should use Portuguese naming conventions (pensões: celestial/maritime/regional metaphors; cafés: saint names, neighborhood names; tascas: nicknames or trades). Non-fictional venues use the locally-canonical name — *Mercado da Ribeira* over *Time Out Market* even when both are technically valid English-readable.
+- **Per-city extension:** When M2+ adds Tokyo and Marrakech, the policy applies in that culture's conventions. The Anthropologist owns the per-culture naming style.
+- **Documented exception path:** If a future PR proposes a real lodging name (Pensão Londres, Hotel Avenida Palace, etc.), the proposer should: (a) demonstrate the building's cultural-landmark status with sources from that culture; (b) get Anthropologist + Historian sign-off; (c) update this ADR with the precedent. Don't carve exceptions silently.
+
