@@ -1,24 +1,27 @@
 name: Lighthouse mobile
 
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-
-# AGENTS.md §6.7: every PR runs Lighthouse (mobile) and must pass
-# Performance >=0.90, PWA >=0.90, Accessibility >=0.95.
+# AGENTS.md §6.7: every preview deployment runs Lighthouse (mobile) and
+# must pass Performance >=0.90, PWA >=0.90, Accessibility >=0.95.
 #
-# TODO(owner): once GitHub -> Vercel is connected, switch this workflow
-# to run against the Vercel preview URL (using
-# `treosh/lighthouse-ci-action` or similar with the deployment URL).
-# Running against `bun run start` locally is fine for M0 but a real
-# preview deployment will be more representative of production.
+# Triggered by Vercel's GitHub integration — when a preview deployment
+# succeeds, GitHub fires a `deployment_status` event with the live preview
+# URL, and this workflow runs LHCI against it. That is more representative
+# of production than `bun run start` on a runner: same CDN, same headers,
+# same cold-start characteristics as users will hit.
+#
+# Production LHCI runs are a future concern; the `environment` filter
+# below excludes them so M0 only gates on preview deploys.
+
+on:
+  deployment_status:
 
 jobs:
   lighthouse:
+    if: |
+      github.event.deployment_status.state == 'success' &&
+      contains(github.event.deployment_status.environment, 'Preview')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -30,27 +33,20 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build
-        run: bun run build
+      - name: Run Lighthouse CI against Vercel preview
         env:
-          # Provided so the build does not fail on missing env. Replace
-          # with the real Convex deployment URL via repo secrets when
-          # the Mobile App Builder wires up real Convex queries.
-          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
-
-      - name: Start Next server
+          # `environment_url` is the live preview URL (e.g.
+          # https://backpacker-git-feat-m0-skeleton-<owner>.vercel.app).
+          # `target_url` is sometimes Vercel's inspect URL — we want the
+          # former. If a future Vercel update flips the field semantics,
+          # this is the line to edit.
+          PREVIEW_URL: ${{ github.event.deployment_status.environment_url }}
         run: |
-          bun run start &
-          # Wait for the server to be reachable before letting LHCI hit it.
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:3000 > /dev/null; then
-              echo "Server is up."
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Server failed to start." >&2
-          exit 1
-
-      - name: Run Lighthouse CI
-        run: bunx --bun @lhci/cli@0.15.x autorun --config=./lighthouserc.json
+          if [ -z "$PREVIEW_URL" ]; then
+            echo "No environment_url on deployment_status — Vercel field semantics may have changed." >&2
+            exit 1
+          fi
+          echo "Running LHCI against: $PREVIEW_URL"
+          bunx --bun @lhci/cli@0.15.x autorun \
+            --config=./lighthouserc.json \
+            --collect.url="$PREVIEW_URL"
