@@ -1,0 +1,56 @@
+name: Lighthouse mobile
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# AGENTS.md §6.7: every PR runs Lighthouse (mobile) and must pass
+# Performance >=0.90, PWA >=0.90, Accessibility >=0.95.
+#
+# TODO(owner): once GitHub -> Vercel is connected, switch this workflow
+# to run against the Vercel preview URL (using
+# `treosh/lighthouse-ci-action` or similar with the deployment URL).
+# Running against `bun run start` locally is fine for M0 but a real
+# preview deployment will be more representative of production.
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+        env:
+          # Provided so the build does not fail on missing env. Replace
+          # with the real Convex deployment URL via repo secrets when
+          # the Mobile App Builder wires up real Convex queries.
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+
+      - name: Start Next server
+        run: |
+          bun run start &
+          # Wait for the server to be reachable before letting LHCI hit it.
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000 > /dev/null; then
+              echo "Server is up."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start." >&2
+          exit 1
+
+      - name: Run Lighthouse CI
+        run: bunx --bun @lhci/cli@0.15.x autorun --config=./lighthouserc.json
