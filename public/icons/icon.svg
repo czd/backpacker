@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Backpacker app icon — any-purpose variant.
+       A folded paper map pictogram in the cozy primary color on warm paper.
+       Composition lives within an inner 384x384 area (the maskable safe zone)
+       so this asset can also be the visual basis for the maskable variant. -->
+  <rect width="512" height="512" fill="#f6f1e6" rx="96" ry="96"/>
+
+  <g transform="translate(256 256)" fill="none" stroke="#385c87" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Folded map: three vertical panels with alternating fold heights.
+         Outline drawn first as a single closed path, then the two inner
+         fold lines, then a route + a pin to suggest "travel". -->
+
+    <!-- Panel outline (a folded brochure seen from above-front).
+         Coordinates are centered on (0,0); width ~340, height ~220. -->
+    <path
+      stroke-width="14"
+      fill="#f6f1e6"
+      d="
+        M -170 -90
+        L  -56 -110
+        L   56  -90
+        L  170 -110
+        L  170  100
+        L   56  120
+        L  -56  100
+        L -170  120
+        Z" />
+
+    <!-- Inner fold lines (slight lean to mimic the panel offsets). -->
+    <path stroke-width="10" d="M -56 -110 L -56 100" />
+    <path stroke-width="10" d="M  56  -90 L  56 120" />
+
+    <!-- Dotted travel route weaving across the map. -->
+    <path
+      stroke-width="9"
+      stroke-dasharray="3 14"
+      d="M -130 60 C -90 -20, -10 -30, 30 10 S 110 30, 140 -50" />
+
+    <!-- Destination pin at the route's end. Filled circle + tail. -->
+    <g transform="translate(140 -50)">
+      <circle r="22" fill="#385c87" stroke="none" />
+      <circle r="8" fill="#f6f1e6" stroke="none" />
+    </g>
+  </g>
+</svg>

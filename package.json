@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
-    "lhci": "lhci autorun --config=./lighthouserc.json"
+    "lhci": "lhci autorun --config=./lighthouserc.json",
+    "icons:generate": "bun run scripts/generate-icons.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -43,6 +44,7 @@
     "@vitest/ui": "^4.1.5",
     "jsdom": "^29.1.1",
     "playwright": "^1.59.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.5"

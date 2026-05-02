@@ -53,3 +53,9 @@ lhci-results/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# next-pwa generated artifacts (regenerated on every `bun run build`)
+/public/sw.js
+/public/sw.js.map
+/public/workbox-*.js
+/public/workbox-*.js.map

@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Backpacker
 
-## Getting Started
+A cozy, mobile-first PWA travel game — a calm, untimed reimagining of the 1995 Swedish travel-trivia classic, built for the device that's always in your pocket. You play a young backpacker with a near-empty wallet, an open ticket, and time to spare; you learn about the world by living in cities for a while, not by being quizzed. The canonical project brief lives in [AGENTS.md](./AGENTS.md) — read it before opening a PR.
 
-First, run the development server:
+## Quickstart
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+bun install
+```
+
+```bash
+bunx convex dev
+```
+
+The first `convex dev` run opens a browser for one-time auth and writes the deployment URL into `.env.local`. Leave it running in a second terminal.
+
+```bash
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open <http://localhost:3000>. Reference viewport is 390×844 (iPhone 14 portrait); see AGENTS.md §6.1.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How to test on a real phone
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The PWA is the product (AGENTS.md §6.6). Browser dev-tools mobile emulation is the minimum bar; a real phone is the actual bar. Both procedures below assume your laptop and phone are on the same Wi-Fi.
 
-## Learn More
+Find your laptop's LAN IP, then bind the dev server to it:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# macOS
+ipconfig getifaddr en0
+# Linux / WSL
+hostname -I
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+bun dev --hostname 0.0.0.0
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### iOS (Safari)
 
-## Deploy on Vercel
+1. Open `http://<lan-ip>:3000` in iPhone Safari.
+2. Tap Share → Add to Home Screen. Confirm the icon is the Backpacker map pictogram. Launch from the home screen.
+3. Verify: status bar tinted warm-paper (no Safari chrome visible), splash fills the viewport, no content tucked under the notch or home indicator.
+4. **Screen recording.** Settings → Control Center → add Screen Recording. Open Control Center (swipe down from top-right) → tap the red dot → demonstrate the splash → tap the red status pill to stop. The clip lands in Photos. AirDrop to your laptop.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Android (Chrome)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Open `http://<lan-ip>:3000` in Chrome on the device.
+2. Chrome menu → Add to Home screen / Install app. Launch from the home screen.
+3. Verify the same visual checks as iOS.
+4. **Screen recording.** Swipe down twice from the top → tap the Screen Record tile → start → demonstrate → stop. The clip lands in Photos / your file manager. Quick Share or USB-transfer to your laptop.
+
+### Lighthouse on the deployed preview
+
+Once the GitHub repository is connected to Vercel, every PR gets a preview URL. Open Chrome DevTools → Lighthouse → Mobile preset → run against the preview URL → screenshot the Performance / PWA / Accessibility scores into the PR description. The CI workflow at `.github/workflows/lighthouse.yml` enforces the budget automatically; the screenshot is a human-readable receipt. The PWA category will fail until the manifest and service worker ship — that is the entire point of the M0 PWA work, and the score is expected to flip from failing to passing on the PR that lands it.
+
+## Tests
+
+```bash
+bun run test         # Vitest unit tests
+bunx playwright test # Playwright e2e at the 390x844 mobile viewport
+```
+
+## Icons
+
+The four PWA icon PNGs in `public/icons/` are generated from the SVG sources alongside them. To regenerate after editing an SVG:
+
+```bash
+bun run icons:generate
+```
+
+## Stack at a glance
+
+Next.js 16 (App Router) · Bun · Tailwind v4 · shadcn/ui · Convex · MapLibre GL JS (M1) · next-pwa · next-intl · Vitest · Playwright. See AGENTS.md §8 for the full list and rationale.
