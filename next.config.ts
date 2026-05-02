@@ -75,6 +75,18 @@ const withPWA = (withPWAInit as any)({
   buildExcludes: [/middleware-manifest\.json$/],
 });
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  // Next 16 blocks HMR / dev-resource requests from non-localhost origins
+  // by default. We test on real phones via Tailscale and over LAN, so those
+  // hostnames have to be on the allowlist. Dev-only; no production effect.
+  // The `*.ts.net` wildcard covers any device on a tailnet; `*.local`
+  // covers mDNS hostnames. Specific hostnames are also listed as a
+  // belt-and-braces fallback in case wildcard support changes.
+  allowedDevOrigins: [
+    "*.ts.net",
+    "*.local",
+    "orion-wsl.tail595b35.ts.net",
+  ],
+};
 
 export default withPWA(withNextIntl(nextConfig));
