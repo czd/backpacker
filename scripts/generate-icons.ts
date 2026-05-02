@@ -11,6 +11,8 @@
  *   - public/icons/icon-512.png            512x512, any-purpose
  *   - public/icons/icon-maskable-512.png   512x512, maskable, fully opaque
  *   - public/icons/apple-touch-icon.png    180x180, any-purpose, opaque
+ *   - public/apple-touch-icon.png          180x180 — iOS Safari probes /apple-touch-icon.png at the root regardless of <link> tags
+ *   - public/apple-touch-icon-precomposed.png 180x180 — same image, satisfies the legacy iOS probe so dev logs and Lighthouse stay clean
  *
  * `sharp` is used for SVG -> PNG rasterization. The package is installed
  * but listed under `ignoreScripts` in package.json — if this script fails
@@ -23,7 +25,8 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
-const ICONS_DIR = join(ROOT, "public", "icons");
+const PUBLIC_DIR = join(ROOT, "public");
+const ICONS_DIR = join(PUBLIC_DIR, "icons");
 
 type Job = {
   source: string;
@@ -56,6 +59,23 @@ const jobs: Job[] = [
     output: join(ICONS_DIR, "apple-touch-icon.png"),
     size: 180,
     flatten: true, // iOS does not honor maskable; keep it opaque
+  },
+  {
+    // iOS Safari probes /apple-touch-icon.png at the root path regardless
+    // of <link rel="apple-touch-icon"> hints. Serve it there too to avoid
+    // 404 noise in dev logs and Lighthouse PWA audit penalties.
+    source: join(ICONS_DIR, "icon.svg"),
+    output: join(PUBLIC_DIR, "apple-touch-icon.png"),
+    size: 180,
+    flatten: true,
+  },
+  {
+    // Legacy probe; same image. iOS dropped the auto-glossy effect in iOS 7
+    // but the probe persists for backward compat.
+    source: join(ICONS_DIR, "icon.svg"),
+    output: join(PUBLIC_DIR, "apple-touch-icon-precomposed.png"),
+    size: 180,
+    flatten: true,
   },
 ];
 
