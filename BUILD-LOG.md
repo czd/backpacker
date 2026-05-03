@@ -12,6 +12,29 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR4 — Snap points + avatar fast-travel + dotted trail
+
+### Shipped
+The drawer is now a real bottom sheet with three snap points (peek / half / full) opening at half by default, with the map staying interactive at peek and half. The player has a presence on the map: a 40×40 cozy avatar at the airport, fast-travels to tapped POIs over a distance-tuned ease-out (1.6–3.0s), with a static dashed trail line that fades in and out behind it. 26/26 e2e passing.
+
+### Highlights from review
+
+- **The avatar inverts the POI marker grammar deliberately.** POI markers are paper-fill body + chart-color icon. The avatar is primary-fill body + paper-color icon. Same world, opposite posture. The player reads as categorically different from destinations at first glance, no labels needed. UI Designer's rounded-square (passport silhouette) seals this — POIs are pills, the player is a passport.
+- **Visual continuity from launch screen → in-game.** The avatar uses the same `--primary` (azulejo teal) and `--primary-foreground` (warm paper) tokens as the splash's "Begin journey" button. The teal-on-paper button you tapped becomes the teal-on-paper backpacker on the map. Small detail; carries the cozy "you arrived in your own choice" feeling.
+- **Static-fade trail beat marching ants.** The slice plan offered both. Frontend Developer picked static + opacity fade. Reasons: a 60Hz `setInterval` calling `setPaintProperty` is observable load even when the rest of the page is idle; reduced-motion is a clean skip rather than a frozen frame; pillar #2 (calm beats clever) — a quiet line that fades is calmer than a marching effect that competes with the avatar's pulse and the destination POI's selected halo. Whimsy Injector at M5 can layer marching on; the source/layer shape accepts it.
+- **`modal={false}` at peek and half is the right gesture story.** Vaul's overlay at non-full snaps would be invisible-but-present, an intercept layer on the map. With `modal={false}` Vaul renders no overlay element — the map's pointer events flow through unobstructed. Custom cozy backdrop only renders at full snap; tap-to-dismiss-to-peek there is the natural full-snap gesture.
+- **Generation-counter ref for travel races.** Tap marker A, then immediately tap marker B mid-travel. Without a guard, the first animation's `onUpdate` would clobber the second one's state writes. A small generation counter (incremented on each travel, captured at start, checked in `onUpdate`) makes the first travel a no-op once superseded. Cozy and correct.
+- **`travelDurationMs` is documented for M2 extension.** JSDoc pins the signature: `travelDurationMs(distKm: number, elevationFactor?: number): number`. M2 can add the elevation factor without breaking callers. The Geographer's PR1 flag (90m vertical = 25min walk for a 900m line) lives on as a grow-this-when-it-matters hook.
+
+### Surprises
+
+- **The avatar's `traveling` state visibility depends on hitting at least one full pulse cycle.** UI Designer's pulse spec is 1.6s in traveling state. If a fast-travel completed in 800ms, the player would never see the faster pulse — the flag would flip on, then off, before the breath finished. The duration formula's `max(1600, ...)` floor exists specifically to honor this. A small UI handshake driving a math constant in the FD slice — exactly the kind of thing a brief can't pre-specify and emerges only when components meet.
+- **Avatar starts at the airport.** Per §5 "settle in (find a bed, get bearings)" — the player's first natural fast-travel is airport → hostel. Tiny choreographed first-time-player moment that fits cozily without being cinematic. The brief didn't say "spawn the avatar at the airport"; it emerged from reading §5 carefully.
+- **The drawer's three snap points + map-stays-interactive contract make the player unconsciously aware that the map is the world.** At peek (~30%), the drawer is a hint at the bottom and you're back on the map. At half (~60%), the drawer is the focus and the map is the context. At full (~95%), the drawer is the world for a moment. The transitions are physical (Vaul spring), not modal — the player learns "this app has texture" without being told.
+- **Bundle headroom is good.** PR4 added 8.6KB to `/lisbon` (227.5KB total / 400KB ceiling). PR5 has 172KB to play with — ample for time-of-day clock + palette swap.
+
+---
+
 ## 2026-05-03 — M1 PR3 — POI markers + placeholder drawer
 
 ### Shipped

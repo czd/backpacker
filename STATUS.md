@@ -4,6 +4,57 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M1 PR4 (snap points + avatar fast-travel)
+
+### Active milestone
+**M1** — branch `feat/m1-lisbon-map`. PR1–PR4 all done. PR5 (time-of-day clock + day/night palette) is the last M1 slice.
+
+### Done this session (M1 PR4)
+- `<AvatarMarker traveling? facing?>` (`7e23322`): 40×40 rounded-square primary-teal body with paper-color Backpack icon, breathing pulse (2.6s rest / 1.6s travel), spring-rotated direction notch, `useReducedMotion` respected. Inverts the POI marker grammar so the player reads as categorically different from destinations. Same `--primary` tokens as the splash button — visual continuity from launch screen → in-game.
+- Drawer cozy chrome refinements (`7e23322`): warm-tinted drag handle, `rounded-t-3xl` top edge, warm-tinted shadow, `overlayClassName` API added to `DrawerContent` for opt-in custom backdrops. Pattern reusable for future settings/journal/dialogue drawers.
+- Three snap points + fast-travel + dotted trail (`83b5dd5`):
+  - Vaul snap points `[0.3, 0.6, 0.95]`, opens at half (0.6) per M1 DoD. `modal={false}` so map stays interactive at peek/half; cozy backdrop only at full snap (taps dismiss to peek).
+  - Snap-aware `panTo` offset: peek → no offset; half → `-0.2*h`; full → no pan.
+  - Avatar starts at airport coords (the player just arrived per §5).
+  - Fast-travel duration formula: `max(1600, min(3000, 800 + distKm * 300))`. Pure straight-line for M1; Geographer's elevation factor stays on the M2 list.
+  - Bearing computed via `Math.atan2(deltaLng, deltaLat) * 180 / Math.PI`. Notch springs internally.
+  - Dotted trail: MapLibre `<Source>`/`<Layer>` line with static dasharray + opacity fade. Marching-ants effect deliberately deferred (avoids a 60Hz `setInterval`; cozy "calm beats clever"). `prefers-reduced-motion` skips trail entirely.
+  - New helpers in `app/lisbon/geo.ts`: `haversineKm`, `bearingDeg`, `lerp`, `travelDurationMs`. Pure functions, no deps added. 25 unit cases.
+  - Generation-counter ref guards against tap-A-then-B mid-travel races.
+  - 6 new e2e tests (avatar at airport, fast-travel lifecycle, drawer half-snap default, no backdrop at half, trail layer presence during travel, arrival coords match destination POI within 6px).
+
+### Bundle situation
+ADR-004 world-layer ceiling: 400 KB gzipped.
+- After PR3: 218.9 KB
+- After PR4: **227.5 KB** (+8.6 KB this PR; +1 KB from avatar component, ~7.6 KB from snap/trail/geo logic)
+- Headroom for PR5: 172.5 KB.
+
+### Blocked on owner
+Same as before — no new gates from PR4. Open: city-entry experience question (M4), MapTiler dashboard origins (Vercel hostnames when connected), `size-limit` chore PR queued, M0 manual gates (Vercel connect, screen recording, Lighthouse, `m0-done` tag).
+
+### Cross-cutting flags from M1 PR4
+
+**For PR5 (time-of-day + day/night palette):**
+- `LisbonMap` now owns substantial state (selectedPoi, activeSnapPoint, avatar, traveling, facing, trail). Adding time-of-day clock as more `useState` is fine for PR5; if state grows further (M2+), extract to Zustand per §8 ("Zustand for UI; Convex for game").
+- `useCozyStyle(prefersDark)` is the right hook to extend with a time-of-day input. Two options: (a) extend the hook to fetch a third style document, OR (b) use MapLibre's `setPaintProperty` runtime knobs on a single base style. Option (b) is lighter (no extra fetch) but less expressive. Worth an ADR if PR5 wants pixel-quiet palette transitions across in-game time.
+- The avatar's `traveling` state is a single boolean today. If PR5 wants distinct dawn / dusk / night avatar palettes, extend `<AvatarMarker>`'s prop API to a `phase` enum (`resting | traveling | arrived | lingering`) — current code doesn't anticipate it.
+
+**For M2 (energy + jobs):**
+- `travelDurationMs(distKm)` JSDoc documents the M2 extension point — signature can grow an `elevationFactor` arg without breaking callers. Per Geographer flag, the castle leg should feel longer than its straight-line distance suggests.
+- Avatar position lives in component state at M1; M2 save-state work moves it to Convex. Add to the M2 schema design (alongside the wallet, rested-ness, time-of-day).
+- The `phase` enum suggested above for PR5 also maps cleanly to M2's energy state if/when the player can be too tired to travel quickly.
+
+**For Whimsy Injector at M5:**
+- The dotted trail is currently static-fade. Marching-ants is a polish add — the source/layer shape is designed to accept it. Add `setPaintProperty("travel-trail", "line-dasharray", ...)` in a `requestAnimationFrame` loop with `prefers-reduced-motion` short-circuit.
+- The avatar's "arrived" beat is currently just `traveling = false`. A small bounce on arrival, or a brief "stamp" animation (passport stamp echo from §7.4 Journal), would land cozily. Whimsy Injector at M5.
+
+**Conventions established (carrying forward):**
+- `data-testid="avatar-marker"` and `data-facing` / `data-traveling` attributes on `<AvatarMarker>` — stable e2e surface.
+- `<Marker>`'s own `onClick` deliberately not used; inner button owns clicks. Pattern repeated for avatar (which has no clicks at M1).
+- `app/lisbon/geo.ts` is the seed for a future multi-city geo helper module if it relocates.
+
+---
+
 ## 2026-05-03 — M1 PR3 (POI markers + placeholder drawer)
 
 ### Active milestone
