@@ -1,3 +1,8 @@
+/* MapLibre's stylesheet must come before Tailwind so our utilities win in
+ * the cascade and the cozy theme can override MapLibre's default control,
+ * attribution, and popup styles. Imported once globally per MapLibre docs;
+ * the M1 /lisbon route depends on this for navigation/attribution chrome. */
+@import "maplibre-gl/dist/maplibre-gl.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
