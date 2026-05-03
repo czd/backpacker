@@ -1,15 +1,25 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { Map, NavigationControl } from "react-map-gl/maplibre";
+import type { StyleSpecification } from "maplibre-gl";
 import { api } from "../../convex/_generated/api";
 
-// MapTiler streets-v2 placeholder per ADR-002 + the M1 PR2 plan. The
-// UI Designer's next slice replaces this with the cozy warm style —
-// either by swapping the URL for a different MapTiler style or by
-// passing a JSON style document (MapLibre style spec) as `mapStyle`.
-// See AGENTS.md §7.1 (world layer) for the target aesthetic.
-const STYLE_URL = `https://api.maptiler.com/maps/streets-v2/style.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY}`;
+// Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
+// styles are vendored as JSON style documents at /public/map-styles/.
+// They reference MapTiler's CDN for vector tiles, glyphs, sprite, and
+// terrain-rgb (hillshade) — but with the API key replaced by the
+// placeholder `__MAPTILER_KEY__` so the JSON in the repo carries no
+// secrets. We fetch the right variant at runtime, inject the key, and
+// hand the parsed object to MapLibre via the `mapStyle` prop.
+//
+// See `scripts/generate-map-styles.ts` for how these JSON files are
+// produced and what overrides have been applied to the upstream
+// streets-v2 style. See AGENTS.md §7.1 for the design intent.
+const STYLE_URL_LIGHT = "/map-styles/cozy-light.json";
+const STYLE_URL_DARK = "/map-styles/cozy-dark.json";
+const KEY_PLACEHOLDER = "__MAPTILER_KEY__";
 
 // Lisbon central frame per the M1 PR1 hand-off note — captures the
 // Baixa / Bairro Alto / Castelo cluster. The airport (Aeroporto
@@ -17,6 +27,82 @@ const STYLE_URL = `https://api.maptiler.com/maps/streets-v2/style.json?key=${pro
 // MapLibre uses [lng, lat], not [lat, lng].
 const LISBON_CENTER: [number, number] = [-9.14, 38.713];
 const LISBON_ZOOM = 13;
+
+/**
+ * Subscribe to `prefers-color-scheme: dark` and re-render when the OS
+ * theme flips. Returns `true` on dark, `false` on light, `null` until the
+ * matchMedia query has been read (which only happens client-side — SSR
+ * gets `null`). Keeping the initial value `null` instead of guessing one
+ * way avoids a hydration mismatch and a flash of wrong-style on first
+ * render. Once the value is non-null we render the map; before that the
+ * map slot stays empty.
+ */
+function usePrefersDark(): boolean | null {
+  const [prefersDark, setPrefersDark] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setPrefersDark(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
+    // Some older Safari versions only support addListener; modern engines
+    // expose addEventListener. Use the modern API and accept the (very
+    // narrow) older-Safari gap — the splash + map are the surfaces that
+    // care, and both also follow the OS theme via CSS @media at the
+    // token level (app/globals.css), so a missed swap on legacy Safari
+    // still produces a usable map, just one variant behind the OS.
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  return prefersDark;
+}
+
+/**
+ * Fetches one of the cozy style JSON documents and rewrites the
+ * `__MAPTILER_KEY__` placeholders to the live key from
+ * `NEXT_PUBLIC_MAPTILER_KEY`. Returns `null` until the fetch resolves;
+ * caller renders the map only when the style is ready.
+ */
+function useCozyStyle(prefersDark: boolean | null): StyleSpecification | null {
+  const [style, setStyle] = useState<StyleSpecification | null>(null);
+  const url = useMemo(
+    () => (prefersDark ? STYLE_URL_DARK : STYLE_URL_LIGHT),
+    [prefersDark],
+  );
+
+  useEffect(() => {
+    if (prefersDark === null) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(url);
+      if (!res.ok) {
+        // Falling through with `null` keeps the screen blank and surfaces
+        // a console error rather than crashing the route. The dev
+        // console already speaks for itself; production hits should be
+        // rare (style is a same-origin static asset cached by the SW).
+        // eslint-disable-next-line no-console
+        console.error("[lisbon] failed to load map style", url, res.status);
+        return;
+      }
+      const text = await res.text();
+      const key = process.env.NEXT_PUBLIC_MAPTILER_KEY ?? "";
+      // String-replace is intentional: every occurrence of the placeholder
+      // gets the key, including the glyphs URL (which is a template
+      // string with `{fontstack}/{range}` braces — JSON.parse would
+      // happily parse it but we'd then have to walk the tree to inject;
+      // string-replace is a single pass and obviously correct).
+      const injected = text.split(KEY_PLACEHOLDER).join(key);
+      const parsed = JSON.parse(injected) as StyleSpecification;
+      if (!cancelled) setStyle(parsed);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefersDark, url]);
+
+  return style;
+}
 
 export function LisbonMap() {
   // Realtime POI query — held for now, rendered as markers in M1 PR3.
@@ -39,50 +125,60 @@ export function LisbonMap() {
   const showPoiCount =
     process.env.NODE_ENV === "development" && pois && pois.length > 0;
 
+  // Cozy style — light or dark, decided by OS theme. The Map only
+  // renders once the style is ready; before that, the warm-paper
+  // background body color shows through (matched at the CSS-token
+  // level so the swap is visually quiet).
+  const prefersDark = usePrefersDark();
+  const cozyStyle = useCozyStyle(prefersDark);
+
   return (
     // `relative h-svh w-full overflow-hidden` is the positioning context
     // and full-bleed frame. `h-svh` is the iOS Safari address-bar-aware
     // viewport unit so the map doesn't get clipped by the chrome.
     <main className="relative h-svh w-full overflow-hidden">
-      <Map
-        initialViewState={{
-          longitude: LISBON_CENTER[0],
-          latitude: LISBON_CENTER[1],
-          zoom: LISBON_ZOOM,
-          pitch: 0,
-          bearing: 0,
-        }}
-        mapStyle={STYLE_URL}
-        // Mobile gesture sanity:
-        // - doubleClickZoom off because future POI tap-handling needs the
-        //   double-tap window unambiguous.
-        // - drag-rotate / touch-rotate are off by default in
-        //   react-map-gl/maplibre touch handlers; we leave that as-is.
-        // - pitch/bearing locked at 0 for M1; PR3+ may opt into mild tilt
-        //   for hill-shading per the topography note in STATUS.md.
-        doubleClickZoom={false}
-        // MapTiler TOS requires attribution; do not hide the control.
-        // MapLibre's default position is bottom-right, which already
-        // keeps it out of the future top-left "leave" affordance area
-        // (AGENTS.md §6.3 mini-game leave button). `compact: true`
-        // collapses the chip on narrow viewports — important at the
-        // 390px reference width.
-        attributionControl={{ compact: true }}
-        style={{ position: "absolute", inset: 0 }}
-      >
-        {/*
-         * NavigationControl in the top-right with safe-area padding so
-         * the +/- zoom buttons clear the notch and don't compete with
-         * the future top-left "leave" affordance for mini-game routes.
-         * `showCompass={false}` because pitch/bearing are locked — a
-         * compass control with nothing to control is just visual noise.
-         */}
-        <NavigationControl
-          position="top-right"
-          showCompass={false}
-          style={{ marginTop: "var(--sai-top)", marginRight: "var(--sai-right)" }}
-        />
-      </Map>
+      {cozyStyle ? (
+        <Map
+          initialViewState={{
+            longitude: LISBON_CENTER[0],
+            latitude: LISBON_CENTER[1],
+            zoom: LISBON_ZOOM,
+            pitch: 0,
+            bearing: 0,
+          }}
+          mapStyle={cozyStyle}
+          // Mobile gesture sanity:
+          // - doubleClickZoom off because future POI tap-handling needs the
+          //   double-tap window unambiguous.
+          // - drag-rotate / touch-rotate are off by default in
+          //   react-map-gl/maplibre touch handlers; we leave that as-is.
+          // - pitch/bearing locked at 0 for M1; PR3+ may opt into mild tilt
+          //   for hill-shading per the topography note in STATUS.md.
+          doubleClickZoom={false}
+          // MapTiler TOS requires attribution; do not hide the control.
+          // MapLibre's default position is bottom-right, which already
+          // keeps it out of the future top-left "leave" affordance area
+          // (AGENTS.md §6.3 mini-game leave button). `compact: true`
+          // collapses the chip on narrow viewports — important at the
+          // 390px reference width. The chip itself is restyled to the
+          // cozy palette in app/globals.css.
+          attributionControl={{ compact: true }}
+          style={{ position: "absolute", inset: 0 }}
+        >
+          {/*
+           * NavigationControl in the top-right with safe-area padding so
+           * the +/- zoom buttons clear the notch and don't compete with
+           * the future top-left "leave" affordance for mini-game routes.
+           * `showCompass={false}` because pitch/bearing are locked — a
+           * compass control with nothing to control is just visual noise.
+           */}
+          <NavigationControl
+            position="top-right"
+            showCompass={false}
+            style={{ marginTop: "var(--sai-top)", marginRight: "var(--sai-right)" }}
+          />
+        </Map>
+      ) : null}
 
       {showPoiCount ? (
         <div

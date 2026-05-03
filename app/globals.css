@@ -233,3 +233,68 @@
     @apply font-sans;
   }
 }
+
+/*
+ * MapLibre attribution chip — restyled to the cozy palette so the
+ * required-by-TOS MapTiler + OpenStreetMap credit reads as part of the
+ * warm-paper world rather than a foreign white pill. We do NOT hide it;
+ * MapTiler's terms (ADR-002) require the attribution to be present and
+ * legible. The link colors stay underlined-on-hover so the chip remains
+ * obviously interactive — quiet, but not disabled-looking.
+ *
+ * The .maplibregl-ctrl-attrib-button is the small "i" toggle on
+ * narrow viewports (compact: true). We restyle it too so the collapsed
+ * state matches.
+ */
+.maplibregl-ctrl-attrib {
+  background-color: color-mix(in oklab, var(--background) 80%, transparent);
+  color: var(--muted-foreground);
+  border-radius: calc(var(--radius) * 0.6);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 2px 6px;
+  backdrop-filter: blur(4px);
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+.maplibregl-ctrl-attrib a:hover,
+.maplibregl-ctrl-attrib a:focus-visible {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+.maplibregl-ctrl-attrib-button {
+  background-color: color-mix(in oklab, var(--background) 80%, transparent);
+  border-radius: calc(var(--radius) * 0.6);
+  /* Inherit the button glyph color from the surrounding chip — MapLibre's
+   * default is a hard-coded #333 SVG. The forcing-via-filter approach lets
+   * us re-tint the bundled SVG without shipping our own. */
+  filter: opacity(0.7);
+}
+.maplibregl-ctrl-attrib-button:hover {
+  filter: opacity(1);
+}
+
+/*
+ * MapLibre navigation control (the +/- zoom buttons in the top-right).
+ * Same cozy treatment so the control reads as part of the world. Tap
+ * targets stay 29px (MapLibre default) — that's below the 44pt floor
+ * (AGENTS.md §6.2). Mobile App Builder's gesture-mitigation slice
+ * (next) is the right place to either bump the size or hide the
+ * control on touch in favor of pinch-zoom only. Flagged here, not
+ * fixed here — out of scope for the cozy-style slice.
+ */
+.maplibregl-ctrl-group {
+  background-color: color-mix(in oklab, var(--background) 85%, transparent);
+  border-radius: calc(var(--radius) * 0.6);
+  box-shadow: 0 1px 2px 0 color-mix(in oklab, var(--foreground) 12%, transparent);
+  backdrop-filter: blur(4px);
+  border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+}
+.maplibregl-ctrl-group button {
+  color: var(--foreground);
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+}
