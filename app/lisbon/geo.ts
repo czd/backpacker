@@ -206,20 +206,23 @@ export function boundsForFit(
 
 /**
  * Travel duration scales linearly with straight-line distance.
- * 600ms per km — owner-tuned 2026-05-03 after real-phone testing
- * showed the previous clamps (max(1600, min(3000, ...))) made
- * short hops feel slow and the airport leg feel like running.
+ * 3000ms per km — owner-tuned 2026-05-03 after real-phone testing.
+ * The earlier 600ms/km felt "much too fast" on a real device; slowing
+ * walking by 5× (to 20% of that speed) creates the in-game economic
+ * pressure for paid alternatives (metro, taxi, bus) that future
+ * milestones may introduce. Walking is what you do when you can't
+ * afford anything else.
  *
  * No floor, no cap — pure proportional. M2's energy work may add an
  * elevation factor (Geographer's flag in STATUS), which slots in here:
  *   travelDurationMs(distKm: number, elevationFactor?: number): number
  *
- * Trade-off accepted by the owner: short hops (e.g. hostel → castle at
- * ~0.6km → 360ms) won't complete a full 1.6s avatar traveling-pulse
- * cycle. The pulse will mostly be visible during longer legs (the
- * airport at ~6.4km → 3840ms), which fits the narrative — the airport
- * arrival is also where the traveling visual most wants to read.
+ * Resulting durations on the Lisbon shortlist:
+ *   Hostel → Castle      ~0.6 km → ~1.8s
+ *   Hostel → Miradouro   ~0.7 km → ~2.1s
+ *   Hostel → Mercado     ~1.0 km → ~3.0s
+ *   Airport → Hostel     ~6.4 km → ~19.2s   (a real walk; pay for transit later)
  */
 export function travelDurationMs(distKm: number): number {
-  return distKm * 600;
+  return distKm * 3000;
 }

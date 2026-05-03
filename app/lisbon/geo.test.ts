@@ -246,45 +246,44 @@ describe("boundsForFit", () => {
 
 describe("travelDurationMs", () => {
   // Owner-tuned 2026-05-03 after real-phone testing: pure proportional
-  // (distKm × 600), no floor, no cap. The previous clamps (max 1600 /
-  // min 3000) made short hops feel slow and the airport leg feel like
-  // running. See PR4-fixup commit message for the full rationale.
+  // (distKm × 3000), no floor, no cap. The earlier 600ms/km felt "much
+  // too fast" on a real device; slowing walking by 5× creates in-game
+  // economic pressure for future paid transit options (metro, taxi).
+  // Walking is what you do when you can't afford anything else.
 
-  it("is pure proportional: distKm × 600 with no floor or cap", () => {
+  it("is pure proportional: distKm × 3000 with no floor or cap", () => {
     // Identity at zero — degenerate but documented.
     expect(travelDurationMs(0)).toBe(0);
-    // 1km → 600ms.
-    expect(travelDurationMs(1)).toBe(600);
-    // 5km → 3000ms.
-    expect(travelDurationMs(5)).toBe(3000);
-    // 10km → 6000ms (would have been capped to 3000ms under the old
-    // formula; now it's allowed to feel as long as the distance does).
-    expect(travelDurationMs(10)).toBe(6000);
-    // Short hops are no longer floored: 0.5km → 300ms.
-    expect(travelDurationMs(0.5)).toBe(300);
+    // 1km → 3000ms.
+    expect(travelDurationMs(1)).toBe(3000);
+    // 5km → 15000ms (would have been capped to 3000ms under the old
+    // clamped formula; pure proportional lets distance feel like distance).
+    expect(travelDurationMs(5)).toBe(15000);
+    // Sub-km hops are no longer floored at 1600ms: 0.5km → 1500ms.
+    expect(travelDurationMs(0.5)).toBe(1500);
   });
 
-  it("airport → hostel duration is ~3.8s (was clamped to 3.0s)", () => {
-    // ~6.4km × 600 = ~3840ms. Allow a window for the actual haversine
-    // value vs. the brief's rounding.
+  it("airport → hostel is a real walk (~19s) — pay for transit later", () => {
+    // ~6.4km × 3000 = ~19200ms. Allow a window for haversine precision
+    // vs. the brief's rounded distance.
     const km = haversineKm(AIRPORT, HOSTEL);
     const ms = travelDurationMs(km);
-    expect(ms).toBeGreaterThan(3600);
-    expect(ms).toBeLessThan(4100);
+    expect(ms).toBeGreaterThan(18000);
+    expect(ms).toBeLessThan(21000);
   });
 
-  it("short central-Lisbon legs are sub-second (was 1600ms floor)", () => {
-    // Brief: hostel → castle ~0.6 km → ~360ms.
+  it("central-Lisbon legs are seconds, not sub-seconds", () => {
+    // hostel → castle ~0.6 km → ~1800ms.
     const castle = travelDurationMs(haversineKm(HOSTEL, CASTELO));
-    expect(castle).toBeGreaterThan(200);
-    expect(castle).toBeLessThan(600);
-    // hostel → miradouro ~0.7 km → ~420ms.
+    expect(castle).toBeGreaterThan(1000);
+    expect(castle).toBeLessThan(2500);
+    // hostel → miradouro ~0.7 km → ~2100ms.
     const miradouro = travelDurationMs(haversineKm(HOSTEL, MIRADOURO));
-    expect(miradouro).toBeGreaterThan(300);
-    expect(miradouro).toBeLessThan(700);
-    // hostel → mercado ~1.0 km → ~600ms.
+    expect(miradouro).toBeGreaterThan(1500);
+    expect(miradouro).toBeLessThan(3000);
+    // hostel → mercado ~1.0 km → ~3000ms.
     const mercado = travelDurationMs(haversineKm(HOSTEL, MERCADO));
-    expect(mercado).toBeGreaterThan(400);
-    expect(mercado).toBeLessThan(900);
+    expect(mercado).toBeGreaterThan(2000);
+    expect(mercado).toBeLessThan(4000);
   });
 });
