@@ -373,6 +373,12 @@ A PR can be rejected with the comment "not mobile-native" if it:
 - Drops below the performance budget.
 - Doesn't work in standalone PWA mode.
 
+### 12.6 Supporting documents
+This brief sits alongside three other docs at the repo root:
+- `DECISIONS.md` — Architecture Decision Records (ADRs). One ADR per significant choice; format in §12.1.
+- `STATUS.md` — current state. What's done, what's next, what's blocked. Rolling, replaced each session per §14.10.
+- `BUILD-LOG.md` — milestone narrative and agent-review highlights. Newest-first; accreting. The "what made the project richer that we want to remember" file. Add an entry when closing out a milestone or significant chunk.
+
 ---
 
 ## 13. Milestones

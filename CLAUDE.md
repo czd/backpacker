@@ -1,5 +1,14 @@
 @AGENTS.md
 
+## Project doc set
+
+- `AGENTS.md` — canonical brief (imported above). The first thing to read every session.
+- `DECISIONS.md` — Architecture Decision Records (ADRs). Why we chose what we chose.
+- `STATUS.md` — current state. What's done, what's next, what's blocked. Rolling, replaced each session.
+- `BUILD-LOG.md` — milestone narrative + agent-review highlights. Newest-first. The "what made the project richer that we want to remember" file.
+
+When closing out a milestone or significant chunk: update `STATUS.md` and add an entry to `BUILD-LOG.md`. ADRs go in `DECISIONS.md` only when there's a real decision worth recording.
+
 <!-- convex-ai-start -->
 
 This project uses [Convex](https://convex.dev) as its backend.
