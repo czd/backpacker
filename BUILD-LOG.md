@@ -12,6 +12,35 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR5 — Time-of-day clock + day/night palette + linger verbs (M1 complete)
+
+### Shipped
+The world has a clock now. Travel advances time continuously (3 game-min per real-second); per-POI "linger" verbs advance it discretely ("Take it in" at the miradouro, "Watch the planes" at the airport, "Sleep until morning" at the hostel). Four cozy phase palettes — dawn, day, dusk, night — swap as in-game time crosses thresholds, with hand-tuned hue families for each. The time-of-day clock chip top-left of the map shows `09:42 · day 2` in Fraunces digits, with a small phase-glyph crossfade (Sun/Sunrise/Sunset/Moon) at boundary crossings. Night closes most POIs ("Closed — come back at 09:00") with the hostel as the obvious always-open exception. M1 ships in 5 PRs + 2 fixups; every DoD line in §13 is met.
+
+### Highlights from review
+
+- **The linger verb pattern is the M1 keystone.** Game Designer's brainstorm landed on it as Option D (hybrid: travel always advances time + per-POI verbs), and it's the spine of every "spending time" mechanic across M2/M3/M4. Sleep at hostel, work at job board (M2), conversation with NPC (M3), photograph the view (M4) — all become flavored linger verbs with quanta. One mechanic, many flavors. The placeholder strings ("Take it in", "Watch the planes") are blunt but the *shape* is correct; Narrative Designer polishes wording at M3 alongside dialogue authoring (it's the same writerly job).
+- **Walking speed × game-time advance reinforces "real over rendered" (#6).** A 19-second real-time walk from the airport burns ~57 in-game minutes — a real-world 6.4km walk takes ~80 minutes, so the abstraction is honest. Future paid transit (taxi: 5 game-min, metro: 10 game-min for the same leg) reads as both faster real-time AND less-of-the-day-burned. Two coherent signals of "I paid for speed." The slowness-by-design from PR4-fixup ("walking is what you do when you can't afford anything else") and the time-advance rate ship together as the same design beat.
+- **Four phase palettes share one hue family.** UI Designer extended the existing cozy-day / cozy-night to dawn (peach-paper, silvery water, gentle hillshade) and dusk (amber-paper, sodium-warm roads, dramatic warm shadows). The phases are *transitions*, not different worlds — same warm-paper / aged-azulejo discipline as M0's splash theme. Even night is warm-night cocoa, not cool blue. Lisbon stays Lisbon across the day.
+- **Clock typography is cozy by being slightly unexpected.** Fraunces serif for the digits is literary — clocks in apps usually want a tabular sans for legibility; the brief's pillar #7 ("minimum viable beauty") wins out here. The journal-as-pocket-paper metaphor (§7.4) reads through to the time chip. Inter for "day N" carries the body-text role. Slot-reel digit animation is M5 Whimsy Injector polish; PR5 ships a clean ~120ms minute slide instead.
+- **Night closure as cozy gentle pressure.** The brief's anti-coercion ethos (§12.4) is preserved: closure messages are descriptive ("Closed — come back at 09:00"), not punitive. The hostel-always-open exception is the natural counterpart — the city sleeps, and you sleep with it (or you stay up at the miradouro reading the description, since *you* don't have a hard timer). This is exactly the design subtle the GD brainstorm called out as "the world has a rhythm; you can choose to ride it or watch it."
+
+### Surprises
+
+- **The travel time-advance rate is a tuning knob, not a constant.** GD suggested 3 game-min per real-second as a starting placeholder. At the current walking speed (`distKm × 3000` ms), the airport leg is 19s real → 57 game-min — close to a real-world walk's duration. Other rates would shift the in-game-day-as-resource feel: at 2 game-min/sec the airport burns ~38 min (cheaper); at 4 it burns ~76 min (more punishing). No real-phone playtesting yet; constant marked `[PLACEHOLDER]` for findability when calibration matters.
+- **The pre-existing e2e tests had silently broken on the speed slowdown.** Commit `27bde8a` cut walking to 20% speed; the e2e travel tests had 10s polls and 30s test timeouts that were fine for the old ~3.8s airport leg but silently broke for the new 19s leg. STATUS reported "32/32 pass" because real-phone testing was the live signal at that time, not e2e. PR5's FD slice surfaced and fixed this in lockstep. Worth flagging: future tuning of `travelDurationMs` should bump these timeouts at the same time.
+- **`MapRef.setStyle` isn't in react-map-gl's TypeScript surface.** It's in the underlying MapLibre `Map` API but react-map-gl explicitly omits some methods from its `MapRef` proxy. Escape hatch: `mapRef.current.getMap().setStyle(parsed, { diff: true })`. Documented at the call site for future palette-mechanism work.
+- **rAF loop stale-closure trap.** The travel-time-advance rAF callback closes over `traveling`, but if it captured the boolean directly it would see the initial `false` on every render. Solution: `travelingRef` mirror via `useEffect`, accessed in the rAF callback. Reusable pattern for any long-lived state-driven loop in M5+ Whimsy work.
+- **Headless-Playwright rAF throttling caveat.** Playwright headless chromium throttles requestAnimationFrame in not-foregrounded tabs. The "travel advances clock" e2e asserts a wide range (`> 2 game-min` and `< 90 game-min`) rather than the empirical ~57 — protects against "didn't advance at all" without coupling to the rate. **Real-device testing remains the load-bearing rate verification.**
+
+### M1 retro
+
+- **Five PRs + two fixups landed M1 in 13 commits across about 24 hours of (paced, hobby) work.** PR1 was data; PR2 was the map and gestures; PR3 was markers and the placeholder drawer; PR4 was snap points + avatar; PR4-fixup was real-phone-testing UX corrections (drawer height, drag conflict, preview-then-travel split, constant speed); PR4-fixup-2 was camera framing + recenter; PR5 was time + palette + linger.
+- **The two fixup PRs were where M1 became actually-good.** The original PR4 was correct-on-paper but wrong-on-phone. Real-phone testing surfaced four issues; addressing them turned the milestone from "shipped" to "felt right." The brief's §12.3 (manual real-phone verification before merge) is doing real work; without it M1 would have shipped with a too-short drawer, an iOS gesture conflict, an auto-travel-on-tap that the owner found jarring, and a clamped travel speed that fought the player's perception. The lesson: the brief's discipline isn't theater.
+- **Five POIs, one city, and the world feels like a place.** Tap a marker → preview opens at half snap → tap "Travel here" → drawer drops to peek → camera fits both endpoints → avatar walks the dotted line → drawer rises to half on arrival → the clock shows 14:47 and the dawn palette is starting to warm. None of those beats is fancy individually; together they're the moment the project found its voice.
+
+---
+
 ## 2026-05-03 — M1 PR4-fixup-2 — Camera framing + recenter + handle bug
 
 ### Shipped

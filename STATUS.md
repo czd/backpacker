@@ -4,6 +4,117 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M1 PR5 (time-of-day clock + day/night palette + linger verbs) — **M1 COMPLETE**
+
+### Active milestone
+**M1 done locally.** Branch `feat/m1-lisbon-map`. All five PRs + two fixups landed. Every M1 DoD line in §13 ships. Awaiting owner real-phone verification + Game Designer milestone review before tagging `m1-done`.
+
+### Done this session (M1 PR5)
+
+**FD slice (`58996f4`):**
+- Zustand `useGameClockStore` per ADR-005: `{ epochMinute }` + derived getters (`dayOf`, `hourOf`, `minuteOfHour`, `phaseOf`, `minutesUntilMorning`). First-launch baseline 14:30 day 1.
+- Travel advances time at 3 game-min per real-second (`[PLACEHOLDER]` rate, tunable). rAF loop gated on `document.hidden` — background pause works. `prefers-reduced-motion` jump-cuts the advance.
+- Per-POI linger verb in drawer (3rd button slot, only when `isAtPoi`):
+  - hostel → "Sleep until morning" (advances to next 06:00)
+  - transit → "Watch the planes" (15 min)
+  - view → "Take it in" (30 min)
+  - sight → "Walk the walls" (60 min)
+  - market → "Browse the stalls" (30 min)
+- Night closure: non-hostel linger button reads "Closed — come back at 09:00" (disabled). Hostel always shows Sleep verb.
+- Palette swap mechanism per ADR-006: `useCozyStyle(phase, prefersDark)`. `map.setStyle({ diff: true })` on phase change. `cozy-{light,dark}` renamed to `cozy-{day,night}` via `git mv`.
+- Placeholder `<TimeOfDayClock />` (replaced by UI Designer's slice).
+
+**UI Designer slice (`55bd4e2`):**
+- `cozy-dawn.json` + `cozy-dusk.json` authored. Dawn = pre-sunrise softness (peach-paper land, silvery water, gentle hillshade, soft warm-grey labels). Dusk = post-sunset afterglow (amber-paper land, warm-tinted water, sodium-warm roads, dramatic shadows). Both share warm-paper / aged-azulejo hue family with day/night.
+- `scripts/generate-map-styles.ts` extended with `DAWN` and `DUSK` Palette tables.
+- `<TimeOfDayClock />` refined: Fraunces digits, Inter day label, ~120ms minute slide animation (ease-out), ~250ms phase boundary micro-flourish (Sun/Sunrise/Sunset/Moon glyph crossfade), phase-tinted pill background. Discrete advances >5min jump-cut (slot-reel for big jumps deferred to M5 Whimsy). Reduced-motion contract: digits swap instantly, glyph swaps without fade, phase tint stays.
+- `data-phase="..."` attribute on clock as dev/test seam.
+- WCAG AA verified across all four phases (foreground 7.5–12.2:1, muted 4.7–7.7:1).
+
+### Bundle situation
+ADR-004 world-layer ceiling 400 KB gzipped.
+- Pre-PR5: 271.03 KB
+- Post-FD slice: 272.31 KB (+1.28 KB)
+- Post-UI slice: ~211–273 KB (the methodology drift continues — both numbers are defensible depending on whether async chunks are summed; trend is flat)
+- Headroom: ~128 KB+ comfortably.
+
+### Verification
+- `bun run build` passes (Next.js 16, TypeScript clean)
+- `bun run test`: **140/140 vitest** across 9 files (+56 new tests since PR4-fixup-2: game-clock-store boundaries, linger-verbs per phase, palette generator)
+- `bunx playwright test --list`: 37 tests
+- `bunx playwright test`: **37/37 e2e pass** at 390×844 (clock baseline at 14:30, travel-advance, linger-advance, night-closure, hostel-always-open all verified)
+
+### M1 DoD walkthrough (§13)
+
+| DoD line | Status |
+|---|---|
+| MapLibre rendering custom warm style centered on Lisbon | ✓ (PR2) |
+| 5+ POIs as Convex docs `{city, slug, name, type, lat, lng, description, openHours}` | ✓ (PR1) |
+| POI markers 44px+ and visually distinct by type | ✓ (PR3) |
+| Tapping POI opens Drawer with peek/half/full snap points | ✓ (PR4) |
+| Map remains visible behind sheet at peek and half | ✓ (PR4 + fixup) |
+| Avatar marker with Framer Motion fast-travel along dotted line | ✓ (PR4) |
+| Time-of-day clock advances when "spending time" at POI | ✓ (PR5: travel + linger) |
+| Day/night affects map style subtly | ✓ (PR5: 4 phases) |
+| Pinch-zoom + two-finger pan smooth; no accidental page-zoom or pull-to-refresh | ✓ (PR2) |
+
+**M1 functional scope: complete.**
+
+### Blocked on owner
+
+**Real-phone verification** — once you've checked the new clock + linger + palette + night-closure on iPhone:
+- Travel-time-advance feel: 3 game-min/real-sec is GD-recommended placeholder. If walking 19s real → 57 game-min feels off, the calibration knob is `GAME_MINS_PER_REAL_SEC_DURING_TRAVEL` in `lisbon-map.tsx`.
+- Phase boundaries: 05:00 dawn / 07:00 day / 18:00 dusk / 20:00 night. Tunable in `phaseOf` if any feels wrong on real device.
+- Clock visual at top-left + recenter at top-right — does the HUD layout breathe on iPhone?
+- Linger button ergonomics — does the third button slot feel natural?
+- Night closure language — does "Closed — come back at 09:00" feel like the world's voice or like a system message?
+
+**Game Designer milestone review** — per the brief, GD reviews milestone closeouts for pillar conformance before tagging done. M1 is the first milestone with real game mechanics; this review matters more than M0's was.
+
+**Tag `m1-done`** once both above are satisfied. Same shape as `m0-done` per AGENTS.md §14.2.
+
+**M0 manual gates still pending** (unchanged from prior STATUS):
+- Vercel connect + `NEXT_PUBLIC_CONVEX_URL` env var
+- Real-phone install + portrait screen recording (M0 + M1 both worth recording now)
+- Lighthouse mobile against deployed production URL
+- `git tag m0-done && git push --tags`
+
+### Cross-cutting flags from M1 PR5
+
+**For Game Designer milestone review:**
+- The night closure rule is the first "the city has its own rhythm" beat. Watch for any feeling that it reads as game-coercion vs. cozy-rhythm. If the latter, consider softer wording.
+- The linger verb pattern is the M1 keystone for M2/M3/M4. Sleep, work, talk, photograph all extend it. Confirm the pattern is right before M2 starts cementing it.
+- Travel-time-advance rate placeholder (3 game-min/real-sec) is a tuning knob — no real-phone playtesting yet at M1 PR5; recommend a calibration session before M2.
+
+**For M2 (energy + jobs + save state):**
+- `useGameClockStore` is the first Zustand store. Sibling stores (player wallet, rested-ness, journal entries) follow the same pattern. Per ADR-005 the clock is one number — same shape for M2's player slice (also normalized data, derived getters).
+- M2 save-state hydrates `epochMinute` from Convex on session resume. One field; trivial.
+- Rested-ness goes here when it lands — the Zustand structure already accepts it. AGENTS.md §5.3 specifies the mechanic.
+
+**For M3 (NPCs + dialogue):**
+- Linger verb wording is currently placeholder ("Take it in", "Watch the planes"). Narrative Designer authors per-POI cozy verbs in M3 alongside dialogue — they're the same writerly job. Verbs should fit the city's voice (Lisbon's is the *Está-se bem* register from BUILD-LOG).
+- Conversation as a "linger" instance: opening a dialogue at an NPC POI advances time at the conversation's duration (designer-set per dialogue). The mechanic is consistent.
+
+**For M4 (Journal + flights + welcome-postcard):**
+- Welcome-postcard is the captured M4 work. The clock visual moves to live inscribed on the postcard (`Lisboa · 14:30 · day 2 · partly cloudy`). The map's top-left chip becomes a smaller redundant glance.
+- City-arrival cinematic = welcome-postcard, no dismissing.
+- Journal Passport stamps = same artifact, frozen on departure date.
+
+**For M5 (polish + Whimsy):**
+- Slot-reel digit animation for big linger jumps (>5 min). Hook: `SLIDE_DELTA_THRESHOLD = 5` constant in `time-of-day-clock.tsx`.
+- Self-host Fraunces SDF glyphs for the map labels (still flagged from PR2).
+- Phase tint as transition (currently instant swap on phase boundary).
+- Linger button on-tap pulse.
+- Marching-ants on travel trail (currently static-fade).
+
+**Conventions established (carrying forward):**
+- **`__gameClock` window seam** for dev/test peek into Zustand state. Pattern is gated on `process.env.NODE_ENV !== 'production'`. Reusable when M2+ adds Zustand stores tests need to inspect.
+- **rAF loop with stale-closure-via-ref pattern** documented at the FD's call site. Reusable for Whimsy Injector animations.
+- **Phase data attribute** (`data-phase` on clock) as a CSS-keyframe / e2e test seam. Reusable for any time-aware UI in M3+.
+- **`[PLACEHOLDER]` comment marker** for design-tunable constants (`GAME_MINS_PER_REAL_SEC_DURING_TRAVEL`). Findable via grep when calibration sessions happen.
+
+---
+
 ## 2026-05-03 — M1 PR4-fixup-2 (camera framing + recenter + handle bug)
 
 ### Active milestone
