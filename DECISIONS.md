@@ -165,3 +165,107 @@ These are the measures that matter to players. A route can stay within its JS bu
 - **Code-split aggressively until splash hits 200 KB.** Possible only by deferring framework code, which trades initial-JS for hydration-cost and net hurts TTI.
 - **Rewrite the brief's §6.7 directly without an ADR.** Violates §12.1's ADR discipline; loses the audit trail.
 
+---
+
+## ADR-005: Game clock as `{epochMinute}` Zustand store
+
+Date: 2026-05-03
+Status: Accepted (owner sign-off 2026-05-03; came out of Game Designer brainstorm for M1 PR5 + M4 city entry)
+
+### Context
+
+M1 PR5 introduces in-game time. The brief §5.1 sets the rate ("in-game day is 5–10 min real-time at relaxed pace"). Game Designer's brainstorm picked Option D (hybrid: travel always advances time + per-POI linger verbs) as the spending-time mechanic. Both surfaces — travel-driven continuous advance and linger-driven discrete jumps — read from and write to a single source of truth.
+
+The data model has options:
+
+- **Structured**: `{ minute: 0–1439, day: number, phase: "dawn" | "day" | "dusk" | "night" }` — readable, four named phases visible at the data layer.
+- **Normalized as `epochMinute`**: `{ epochMinute: number }` plus derived getters for `hourMinute`, `day`, `phase`. Single integer is the source of truth; derivations are pure functions.
+
+The choice affects M2 save-state robustness, future time-zone or DST interactions, off-by-one behavior at midnight, and how testable the time-of-day logic is.
+
+### Decision
+
+**Use `{ epochMinute }` as a single normalized integer. Derived getters surface the structured view.**
+
+Implementation shape (Zustand):
+
+```ts
+type GameClockState = {
+  epochMinute: number;            // canonical; minutes since "first launch" baseline
+  advance: (mins: number) => void;
+  setEpochMinute: (m: number) => void;
+};
+
+// Derived (pure) — exported separately so they can be reused server-side or in tests:
+function dayOf(em: number): number { return Math.floor(em / 1440) + 1; }
+function minuteOf(em: number): number { return em % 1440; }   // 0–1439
+function hourOf(em: number): number { return Math.floor(minuteOf(em) / 60); }
+function phaseOf(em: number): "dawn" | "day" | "dusk" | "night";  // bucketed boundaries
+```
+
+First-launch baseline: `epochMinute = 14*60 + 30 = 870` (14:30, day 1, "afternoon arrival" per GD recommendation).
+
+The store lives at `app/lisbon/game-clock-store.ts` (or city-agnostic location once M4 multi-city ships; revisit then).
+
+### Consequences
+
+- **Save-state is one number** — Convex serialization is trivial; no schema-shape questions about whether `phase` is canonical or derived. M2's save-state work just persists `epochMinute`.
+- **No off-by-one at midnight** — `minuteOf(em) === 0` cleanly handles the 23:59 → 00:00 transition because `dayOf` increments naturally.
+- **Phase boundaries are derived, not stored** — if GD ever wants to tune the dawn/dusk thresholds (e.g., move dawn to 06:00 instead of 05:00), it's a one-line change in `phaseOf`, not a data migration.
+- **Travel advance is a delta** — `advance(deltaMinutes)` during fast-travel; `advance(15 | 30 | 60)` for linger; `setEpochMinute(epochMinute + ...)` for sleep-until-morning (which computes the delta).
+- **Background pause is straightforward** — `document.visibilitychange` listener gates the advance loop. No drift on resume because we don't track wall-clock time elapsed; we only advance when the player is actively interacting.
+- **Tests can use literal numbers** — `expect(phaseOf(870)).toBe("day")`, `expect(dayOf(2880)).toBe(3)`. No date-mocking required.
+- **Future-proof for M4 city stamps** — when the player flies to Tokyo, the journal Passport stamp records `epochMinute` of arrival; rendering the stamp's date/time is a getter call.
+
+### Alternatives considered
+
+- **Structured `{ day, minute, phase }`.** Readable but introduces consistency questions: is `phase` canonical or derived? If canonical, mutations have to update both `minute` and `phase`. If derived, why store it?
+- **Date object or epoch milliseconds.** Game time is decoupled from real time — using `Date` introduces real-time semantics (timezones, DST) that have no place in a game clock. Game-minutes are the natural unit; stick with integer minutes.
+- **Per-component local state.** Untenable — multiple components (clock UI, palette swap, drawer's "Closed at this hour" label) need the same time. Single source of truth is non-negotiable.
+
+---
+
+## ADR-006: Day/night palette via four phase JSONs + `setStyle({ diff: true })`
+
+Date: 2026-05-03
+Status: Accepted (owner sign-off 2026-05-03; came out of Game Designer brainstorm for M1 PR5)
+
+### Context
+
+M1 PR5's day/night palette transitions the cozy MapLibre style across four named phases — dawn (05:00–07:00), day (07:00–18:00), dusk (18:00–20:00), night (20:00–05:00). The cozy custom style currently exists as two hand-tuned JSONs at `public/map-styles/cozy-{light,dark}.json` (PR2 work, generated by `scripts/generate-map-styles.ts`).
+
+Two implementation paths:
+
+- **Four full style JSONs**, one per phase. The map swaps via MapLibre's `map.setStyle(newStyleObject, { diff: true })` — only re-applies properties that changed; no full re-fetch of glyphs/sprites.
+- **One base style + runtime `setPaintProperty` per phase change**, mutating individual paint properties (water color, hillshade tones, label colors) at runtime.
+
+GD recommendation: separate JSONs. Each phase has distinct hillshade tonality, label color, water color, building fill — too many properties for runtime tweaks. The cozy style is the project's aesthetic muscle and keeping its declarative form is worth the marginal fetch cost. `diff: true` minimizes blank-flash.
+
+### Decision
+
+**Four phase JSONs (`cozy-dawn.json`, `cozy-day.json`, `cozy-dusk.json`, `cozy-night.json`) swapped via `map.setStyle(newStyle, { diff: true })`.** Existing `cozy-light.json` is renamed `cozy-day.json`; existing `cozy-dark.json` is renamed `cozy-night.json`. Two new JSONs added: `cozy-dawn.json` and `cozy-dusk.json`.
+
+The generator at `scripts/generate-map-styles.ts` extends to a per-phase palette table; `bun run map-styles:generate` outputs all four.
+
+`useCozyStyle` hook extends from `(prefersDark) => style` to `(phase, prefersDark) => style`. The `prefersDark` input becomes a fallback only when phase is `null`/`undefined` (e.g., before the game clock initializes); once the clock is alive, `phase` is canonical.
+
+Reduced-motion contract: phase transitions under `prefers-reduced-motion` are jump-cuts. Mirrors the existing camera contract from PR4-fixup-2.
+
+### Consequences
+
+- **Author once, ship four phases.** UI Designer extends the existing palette table (light/dark) to four phases (dawn/day/dusk/night) in `scripts/generate-map-styles.ts`, regenerates, ships.
+- **Bundle cost is per-style-JSON gzipped.** Light + dark currently ~7.5 KB each gzipped (15 KB total); four phases ≈ 30 KB total. Loaded lazily as the player crosses phase boundaries — only the current phase's JSON sits in browser memory at any given time. Below ADR-004's 400 KB world-layer ceiling without strain.
+- **`setStyle({ diff: true })` is a known-good MapLibre 5 mechanism.** Diff'd style swap re-uses tile cache and glyph cache, only re-applies changed paint properties. Blank-flash is minimal; if the player notices, M5 polish can crossfade via a temporary overlay layer.
+- **Phase boundaries are derived from the game clock** (per ADR-005's `phaseOf(epochMinute)`). When `phaseOf` changes return value, the hook fires `setStyle`. Idempotent — calling `setStyle` with the same already-applied style is a no-op.
+- **OS dark-mode preference becomes secondary.** Once the player is in Lisbon, in-game time wins. Users in light-mode OS who play at in-game-night see the cozy-night map; correct and expected. The OS preference still drives UI chrome (drawers, splash) and the map *only when the game clock is unset* (e.g., on the splash before any city is loaded).
+- **PR5 day↔night swap can ship before dawn/dusk are designed.** UI Designer's PR5 slice can author dawn/dusk fully, OR ship dawn/dusk as light-copies / dark-copies of day/night palettes initially with M5 polish refining them. UI Designer's call.
+- **`setPaintProperty` remains available for non-palette runtime tweaks** — e.g., the dotted-trail layer's `line-dasharray` or `line-opacity` (PR4 work) doesn't go through the palette mechanism. Two mechanisms coexist: phase JSONs for aesthetic, `setPaintProperty` for ephemeral.
+
+### Alternatives considered
+
+- **`setPaintProperty` runtime tweaks on a single base style.** Lighter (no extra fetch) but less expressive — every phase difference has to be enumerated as a paint-property mutation, and structural style changes (different label visibility, different layer stacking) are awkward. The cozy style's declarative form is its strength; preserving it across four phases honors pillar #7.
+- **CSS-driven approach** (color tokens swap via `prefers-color-scheme` + extended phase media queries). Doesn't work — MapLibre paints to canvas, not DOM.
+- **Two phases only (day/night) with discrete swap.** Loses dawn/dusk as cozy moments. Pillars #2, #3, #7 all benefit from the four-phase richness; cost is one extra JSON per side.
+
+
+
