@@ -216,6 +216,7 @@ The store lives at `app/lisbon/game-clock-store.ts` (or city-agnostic location o
 - **Background pause is straightforward** — `document.visibilitychange` listener gates the advance loop. No drift on resume because we don't track wall-clock time elapsed; we only advance when the player is actively interacting.
 - **Tests can use literal numbers** — `expect(phaseOf(870)).toBe("day")`, `expect(dayOf(2880)).toBe(3)`. No date-mocking required.
 - **Future-proof for M4 city stamps** — when the player flies to Tokyo, the journal Passport stamp records `epochMinute` of arrival; rendering the stamp's date/time is a getter call.
+- **Caller owns fractional accumulation when driving from a continuous source.** The store's `advance()` rounds to integer minutes (per the "integer minutes are the natural unit" line above). Callers driving `advance()` from a continuous source — `requestAnimationFrame`, scheduled timers, or any other sub-minute interval — must accumulate the fractional remainder *locally* and commit only whole minutes. M1 PR5's travel rAF loop and PR5-fixup-2's linger rAF loop both follow this pattern (an `accumulatedMins` local variable inside the loop, `wholeMins = Math.floor(...)`, commit + subtract). M2 mini-games and any other rAF-driven advance source must do the same; the store will round per-frame deltas to 0 otherwise. This caller-side responsibility was not explicit in the original ADR text and surfaced as a real bug in M1 PR5's first ship — addendum added 2026-05-03 after Game Designer milestone review.
 
 ### Alternatives considered
 

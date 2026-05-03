@@ -4,7 +4,79 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
-## 2026-05-03 — M1 PR5 + four fixup rounds — **M1 COMPLETE (real-phone-tuned)**
+## 2026-05-03 — M1 milestone review — **APPROVED (non-blocking notes)**
+
+### Active milestone
+**M1 done locally + GD-approved.** Branch `feat/m1-lisbon-map`, ~22 commits. Five PRs + four fixup rounds + GD milestone review. Every M1 DoD line met; cozy + mobile-native checklists clean; six M5 Whimsy deferrals confirmed correct. **`m1-done` tag is unblocked** — owner runs `git tag m1-done && git push --tags` when ready (the brief's §14.2 leaves the timing to the owner; no further code work is gating).
+
+### Game Designer milestone review (verdict)
+
+**Approve with non-blocking notes.** All seven pillars sing or are neutral; no ✗. M1 DoD §13 fully met. §12.4 cozy and §12.5 mobile-native checklists pass. The four real-phone fixup rounds did the work the brief's §12.3 asked them to do — milestone is shippable *because of* the discipline, not in spite of it.
+
+GD's pillar walk:
+| Pillar | Verdict |
+|---|---|
+| 1. Mobile is the home | ✓ sings |
+| 2. Calm beats clever | ✓ sings |
+| 3. The world is the protagonist | ✓ sings |
+| 4. Learning is a side effect of presence | ~ neutral, leaning ✓ (M3+M4 fully land it) |
+| 5. Player time is sacred | ✓ sings |
+| 6. Real over rendered | ✓ sings |
+| 7. Minimum viable beauty | ✓ sings |
+
+GD calibration sign-off (all signed):
+- Travel rate `4 game-min/real-sec` — math checks out (≈ real 5km/h walking pace), sets up M2 paid-transit gradient cleanly
+- Linger rate `15 game-min/real-sec` capped at `3s` real — cap is load-bearing; sleep reads as "hours flying by" montage
+- Travel/linger asymmetry — encodes "walking is cost; lingering is experience"
+- Phase boundaries (dawn 05–07, day 07–18, dusk 18–20, night 20–05) — Mediterranean-summer compromise; fine for M1, defer winter modeling unless it ever matters
+- Linger verb quanta — read as cozy actions, not balance numbers
+- `ALWAYS_OPEN_TYPES = {transit, view}` — M2 deferral confirmed correct; do not pull forward
+
+GD M5 Whimsy deferral confirmation: all six items (slot-reel, marching-ants, Fraunces glyphs, phase-tint transition, on-tap pulse, arrival-stamp) correctly deferred. Plus one addition: phase-tint *transition* on the clock chip itself (currently jump-cuts; M5 polish layers a 250ms ease).
+
+### Done this session
+
+- Game Designer milestone review (commit pending — this STATUS update + ADR-005 amendment + BUILD-LOG entry).
+- **ADR-005 amendment** ("Consequences" addendum): callers that drive `advance()` from a continuous source own the fractional accumulator; the store commits whole minutes only. Promotes the BUILD-LOG resolution into the canonical ADR before M2 PR1 builds another rAF-driven advance source. Non-blocking but specifically called out by GD to land before M2 PR1.
+
+### Blocked on owner
+
+**M1 ship gates (now unblocked):**
+- `git tag m1-done && git push --tags` — owner's call when ready
+
+**M0 manual gates still pending** (unchanged):
+- Vercel connect + `NEXT_PUBLIC_CONVEX_URL` env var (Preview + Production scopes)
+- Real-phone install + portrait screen recording
+- Lighthouse mobile against deployed production URL
+- `git tag m0-done && git push --tags`
+
+**Optional sanity check** (GD non-blocking note):
+- Verify the disabled-outline button (the "Closed — come back at 09:00" linger button at night) still passes WCAG AA contrast in dark-mode standalone PWA on real iPhone. M5 Whimsy can polish if needed; not a ship gate.
+
+### Followups graduated by GD review
+
+**For M2 (must / should land before mini-game work):**
+1. **`size-limit` chore PR as first M2 chore** — before any mini-game adds bytes; pins the bundle measurement methodology that's been drifting since PR3. Currently queued behind Vercel connect.
+2. **M2 PR1 includes player-state Zustand slice extraction** — wallet, rested-ness, save-state. Follows game-clock-store template established in M1 PR5.
+3. **Land structured `availability` POI field** — supersedes `ALWAYS_OPEN_TYPES = {transit, view}` placeholder. Open/close ranges per day; possibly seasonal for the castle.
+4. **Walking-vs-paid-transit calibration session** — at 4 game-min/real-sec walking, paid transit's value gradient is M2's calibration deliverable. Don't ship M2 mini-game without it.
+5. **Mini-game pattern note for M2 PR2+** — the rAF + accumulator + `document.hidden` gate pattern is reusable; document as a shared helper before M2 PR2 forks it. The job mini-game is a "longer linger that pays" — fit the existing pattern, do not invent a parallel one.
+
+**For M3 (Narrative Designer):**
+6. **Linger verb wording polish** — placeholder strings are the right shape but blunt. "Walk the walls" lands cozy; "Take it in" is generic. Polish alongside dialogue authoring.
+7. **"Closed — come back at 09:00" reads system-message-y** — Lisboeta voice ("Closed for the night — try again tomorrow morning") might land cozier. Schedule, don't block.
+
+**For M4 / M5:**
+8. **Research pass before authoring pass for Tokyo / Marrakech** — Anthropologist-flagged stereotype lists must precede any seed prose. Plan as explicit milestone-planning beats so authoring doesn't compress.
+9. **Phase-tint transition on the clock chip** — currently jump-cuts on phase boundary; M5 Whimsy adds 250ms ease (new addition to M5 list).
+10. **Slot-reel / slide on clock via clip-path / mask mechanic** — the dead-end is documented in BUILD-LOG. M5 Whimsy gets the right mechanic, not a retry of SlidingDigits-with-absolute-positioning.
+
+### Cross-cutting: tech debt watch
+`LisbonMap` state count is now substantial (~13 distinct `useState` + refs). M2 player state will push it over the threshold. **Plan extraction in M2 PR1.** Bounded refactor, pattern already established.
+
+---
+
+## 2026-05-03 — M1 PR5 + four fixup rounds — initial ship
 
 ### Active milestone
 **M1 done locally.** Branch `feat/m1-lisbon-map`, ~20 commits. All five PRs + four fixup rounds landed. Every M1 DoD line in §13 ships. Awaiting Game Designer milestone review before tagging `m1-done` (real-phone verification largely happened in-flight via the four fixup iterations).

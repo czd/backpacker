@@ -12,6 +12,33 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 milestone GD review — Approved with non-blocking notes
+
+### Shipped
+Game Designer milestone review: **approve with non-blocking notes**, all seven pillars sing or are neutral, every M1 DoD line met, cozy + mobile-native checklists clean, all calibrations signed off, all six M5 Whimsy deferrals confirmed correct. Ten followups graduated to M2/M3/M4/M5. ADR-005 amended with the rAF-caller-owns-accumulator clarification (small "Consequences" addendum) so the BUILD-LOG-captured lesson lands in the canonical ADR before M2 PR1 builds another continuous-time advance source.
+
+### Highlights from review
+
+- **The four real-phone fixup rounds are why M1 ships.** GD's verdict line: "the milestone is shippable *because of* the discipline, not in spite of it." PR5's initial ship was technically correct — every DoD line, every test green — but six things were wrong on a real iPhone. Each round fixed something that headless e2e and dev-tools mobile emulation wouldn't have surfaced. Without the brief's §12.3 "manually verify on a real phone before merge" gate, M1 would have shipped with a clock that didn't tick, a colon that drifted, an airport that closed at night while saying "Open 24h," travel that felt slightly slow, linger that teleported you through time, and a colon-fix that didn't hold. The discipline isn't theater — it's how cozy gets earned.
+
+- **The travel/linger asymmetry encodes the design.** GD's framing: "walking is the cost; lingering is the experience." Travel runs at 4 game-min/real-sec (slow on purpose, sets up M2 paid-transit value gradient). Linger runs at 15 game-min/real-sec capped at 3s (the cap is load-bearing — it's what keeps a 480-min sleep from being a 32s wait). The ratio (linger ≈ 3.75× travel) is the right signal: walking's slowness is felt, lingering's presence is felt, and a future taxi at low/zero linger-time advance reads as "I bought back the day." This is the seed of M2's economic-pressure mechanic.
+
+- **The keystone design decision was the linger verb.** GD's M1-keystone framing held under review. One mechanic, many flavors: sleep at hostel, work at job board (M2), conversation with NPC (M3), photograph the view (M4), eat at market (M2+) — all become flavored linger verbs with quanta. The placeholder strings are the right *shape*; M3 Narrative Designer polishes the wording alongside dialogue authoring (it's the same writerly job).
+
+- **All six M5 Whimsy deferrals confirmed correct, plus one addition.** GD's specific endorsement on slide / slot-reel: "M5 Whimsy gets the *right* mechanic (clip-path / mask over static text per the BUILD-LOG's pointer) rather than retrying the broken one." The previous BUILD-LOG entry's documentation of why SlidingDigits-with-absolute-positioning fights baseline coordination is now operational guidance for M5 — future-Whimsy doesn't retry the dead end. The new addition: phase-tint *transition* on the clock chip (currently jump-cuts on phase boundary; M5 polish adds a 250ms ease so the world's transition carries into the HUD).
+
+### Surprises
+
+- **One ADR amendment came out of review.** GD recommended amending ADR-005 to make explicit what was implicit: callers driving `advance()` from a continuous source own the fractional accumulator; the store commits whole minutes only. The original ADR's "integer minutes are the natural unit" line was clear about the *unit* but ambiguous about the *boundary of responsibility*. The bug ("clock didn't tick during travel") landed exactly at that ambiguity. Promoting the BUILD-LOG resolution into the canonical ADR isn't just docs hygiene — it's preventing M2 PR1 from re-discovering the same bug when it builds a wallet-tick or stamina-drain timer. **Lesson:** ADRs are most fragile at the boundaries between layers. When a future ADR prescribes data shape, also prescribe where rounding / clamping / accumulation belongs.
+
+- **Tech debt watch came out of review unexpectedly.** GD counted ~13 distinct `useState` + refs in `LisbonMap` and flagged that M2 wallet/rested-ness/save-state will push it over the threshold. The Zustand pattern established for the game-clock store is the template; M2 PR1 extracts player state. None of this is "wrong" code — each state slice was added correctly at the time it was needed — but the compounding crossed a legibility boundary somewhere between PR4-fixup-2 and PR5-fixup-2. **Lesson:** even when each slice is small and bounded, count them periodically. ~10 is the readable ceiling for a single component's local state without a comment-block table of contents.
+
+- **The §6.7 200KB JS budget number is the most-cited "amended via ADR" decision in the project so far.** ADR-004 reframed it; GD's review didn't second-guess. The brief's §6.7 now reads "tiered per route class, see ADR-004." It's a clean example of "the brief is amendable via ADR per §12.1" working as designed: the original number was wrong for the locked stack, the ADR captured the reasoning, the user-facing performance budgets (TTI, LCP, Lighthouse score) stayed as the actual gate. M2 mini-games will land another budget conversation (Phaser routes per ADR-004's "TBD per game" line). The pattern for "the brief was wrong about X, here's why and what we changed to" is now established.
+
+- **No blockers.** GD blocked M0 on the 44pt floor; M1 had nothing to block on. The four fixup rounds had already fixed the things real-phone testing surfaced. The only remaining gates are owner manual (real-phone verify of disabled-button-contrast in dark-mode PWA — non-blocking sanity check; tag `m1-done` whenever ready).
+
+---
+
 ## 2026-05-03 — M1 PR5 fixup rounds — Real-phone tuning to ship-feel
 
 ### Shipped
