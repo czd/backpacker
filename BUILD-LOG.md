@@ -12,6 +12,27 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR4-fixup — Real-phone UX fixes
+
+### Shipped
+Owner tested PR4 on a real iPhone via Tailscale and surfaced four issues. All four fixed in one slice (`5271187`): half snap bumped to 0.7 with content reordered (practical info above the fold, literary description below), Vaul `handleOnly={true}` so drag never reaches the iOS home-indicator zone, marker tap split from travel commit (preview then explicit "Travel here"), pure-proportional travel duration with no clamps. Bundle actually shrank (233 → 231.2 KB on `/lisbon`); 28/28 e2e + 69/69 vitest passing.
+
+### Highlights from review
+
+- **The fix to #1 (drawer too short) was the smaller of two changes.** Bumping half-snap to 0.7 buys real estate. The bigger UX win was reordering content so `openHours` lands *before* `description` — practical info (when is this open?) sits above the fold by default, and the literary description (which can run long) sits below where the player can scroll for it. The brief's anti-quiz, anti-pop-up information philosophy says the player learns by being there; the PR4-fixup ordering says they also plan by being there. Pragmatic info first.
+- **`handleOnly={true}` is the cozy-mobile pattern.** Apple Maps and Spotify use drag-from-anywhere bottom sheets; we use drag-from-handle. The trade is: predictable gesture vocabulary > common pattern. With handleOnly, the body of the drawer is fully tap-and-scroll territory (the Travel button, the description scroll, the openHours line are all *just* taps, not ambiguous-with-drag). The drag handle at the top is a single, obvious affordance. §6.2 "predictable beats clever" wins.
+- **Preview-then-travel realigns the player flow.** The original PR4 model — tap marker, avatar zooms, drawer opens — was efficient but committed the player to action before they'd read about the place. The PR4-fixup model — tap marker, drawer opens for preview, "Travel here" commits — is calmer and respects player time. The Frontend Developer's choreography (drawer snaps to peek during travel so map is visible, snaps back to half on arrival) makes the act of traveling feel like a small ceremony rather than an instant teleport. The pulse cadence change on the avatar still happens; the trail still draws and fades; only now the player chose to start it.
+- **Constant-speed travel honors what the player perceives.** The clamps in the original duration formula (1600ms floor, 3000ms cap) were defensive — they protected the avatar's pulse-cycle aesthetic and capped the airport leg. But the owner felt the result as "running" on the airport leg and "very slow" on short hops. The fix is a one-line formula change (`distKm × 600`) and the avatar stops fighting its own movement. The trade-off — short hops don't complete a pulse cycle — is the correct one to take when the alternative is breaking the speed-honesty.
+
+### Surprises
+
+- **Vaul's snap-point math is viewport-relative, not content-relative.** With `h-auto max-h-[95svh]` on `<DrawerContent>`, a short content box (~395px) gets translated by `(1−snap)*viewport_height` (~253px at snap=0.7), pushing the bottom of the natural-flow content below the visible region — leaving only ~140px visible at "half snap." Pinning `h-[95svh]` makes the box taller than the snap-shown region; the translate then positions the natural-flow content (header + openHours + description + button ≈ 400px) inside the visible upper region. The empty space below the natural content is offscreen and harmless. Counter-intuitive but correct. shadcn's default `mt-24` over-constrained this when combined with the `h-[95svh]` pin; needed to zero it via a data-attribute selector.
+- **Long descriptions in scrollable bodies fight flexbox.** Naively giving the description `flex-1` made it consume the entire 95svh box and pushed the Travel button offscreen. Solution: cap the description at `max-h-[42svh]` (~50% of viewport, leaving room for header + openHours + button at half snap). For the typical short descriptions in the seed, the cap is invisible (description hits its natural height first); for verbose ones, the cap kicks in and the description scrolls inside the body. The Travel button is always visible at half snap.
+- **`handleOnly={true}` requires Vaul's `<Drawer.Handle>` primitive.** The cozy handle was previously a styled `<div>` with `pointer-events-none`. With `handleOnly`, Vaul's drag listeners short-circuit at content and only fire from elements rendered through the `Handle` primitive. Solved by exporting a `DrawerHandle` from the shadcn wrapper that re-forwards `Drawer.Handle`, then layering the cozy 4×36 pill as a child of Vaul's auto-rendered `<span data-vaul-handle-hitarea>`. Small primitive surface extension; reusable for future drawers.
+- **Bundle shrank slightly.** Removing the clamp logic (`Math.max`/`Math.min` calls + the constants) and adding the Travel button (already in chunk from splash) net to a small reduction. Counter-intuitive given the slice added a feature (preview-then-travel).
+
+---
+
 ## 2026-05-03 — M1 PR4 — Snap points + avatar fast-travel + dotted trail
 
 ### Shipped

@@ -4,6 +4,50 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M1 PR4-fixup (real-phone UX fixes)
+
+### Active milestone
+**M1** — branch `feat/m1-lisbon-map`. PR1–PR4 + PR4-fixup all done. PR5 (time-of-day clock + day/night palette) is the last M1 slice.
+
+### Done this session (PR4-fixup, commit `5271187`)
+Real-phone testing on iPhone via Tailscale surfaced four issues; all four fixed in one slice:
+
+1. **Drawer half-snap was 0.6 → openHours below the fold.** Bumped half snap to **0.7**. Reordered drawer body: **Name → Type pill → Clock+openHours → Description**. Practical info lands above the fold; literary description sits below where it scrolls. Description capped at `max-h-[42svh]` so it scrolls inside the body for long prose without pushing the Travel button offscreen.
+2. **Drag conflicted with iOS home-indicator gesture (accidentally closed app).** Set Vaul `handleOnly={true}` — drag now originates from the visible handle only (top of drawer, well above the indicator zone). Required exporting `DrawerHandle` from `components/ui/drawer.tsx` (re-forwards Vaul's `Drawer.Handle` primitive) and pinning the cozy 4×36 pill as a child of Vaul's auto-rendered hitarea. §6.2 "predictable beats clever" wins over the more-common iOS drag-from-anywhere pattern.
+3. **Preview-then-travel split.** Marker tap now opens the drawer for preview only; a "Travel here" button at the bottom of the drawer fires the fast-travel. Becomes "You're here" (disabled, outline variant) when the avatar is at that POI. Travel choreography: tap "Travel here" → drawer programmatically snaps to peek (map visible) → avatar travels → on arrival, drawer snaps back to half. `prefers-reduced-motion` skips the choreography. Aligns with pillars #2 (calm) and #5 (player time is sacred) — players preview without committing.
+4. **Constant travel speed.** Replaced `max(1600, min(3000, 800 + distKm * 300))` with pure proportional `distKm * 600`. No floor, no cap. New durations: airport leg ~3.8s, hostel↔castle ~360ms, hostel↔miradouro ~420ms. Pulse-cycle mismatch on short hops accepted per owner preference.
+
+### AGENTS.md §15 framing correction
+Earlier turn captured the city-entry design question with "if adopted, /lisbon becomes a sub-route" framing. Owner correctly pointed out routes are stable either way (welcome screen can render at /lisbon with map as a contained panel; child routes like /lisbon/jobs/* are unaffected). Corrected the §15 wording.
+
+### Bundle situation
+ADR-004 world-layer ceiling 400 KB gzipped.
+- Pre-fixup: 233 KB
+- Post-fixup: 231.2 KB (slightly down — clamp logic removed; Travel button was already in chunk from splash)
+- Headroom for PR5: ~169 KB.
+
+### Verification
+- `bun run build` passes
+- `bun run test`: 69/69 vitest pass across 6 files (3 new drawer tests for the fixup)
+- `bunx playwright test --list`: 28 tests; e2e suite passes locally
+- New e2e: marker tap opens drawer (no auto-travel); Travel-here button click triggers travel; arrival flips button to "You're here"; airport-start shows "You're here"
+
+### Cross-cutting flags from PR4-fixup
+
+**For PR5 (time-of-day + day/night):** unchanged from previous STATUS — extend `useCozyStyle(prefersDark)` with a time-of-day input; `LisbonMap` state grew (selectedPoi, activeSnapPoint, currentPoiSlug, avatar, traveling, facing, trail) — extract to Zustand if PR5 adds substantially more.
+
+**For M2 (energy + jobs + save state):**
+- `currentPoiSlug` lives in component state at M1; M2's save-state work moves it to Convex alongside avatar coords, wallet, rested-ness, time-of-day. The avatar-at-airport seed becomes the "new game" starting state.
+- The Travel button's three-state pattern (Travel here / You're here / disabled) is a cleanly extensible control. M3 may want a "Closed at this hour" state if a POI has effective hours.
+- `travelDurationMs(distKm)` JSDoc pins the M2 elevation extension point: `(distKm: number, elevationFactor?: number) => number`. Pure-proportional baseline is the right starting shape for that.
+
+**Conventions established (carrying forward):**
+- `DrawerHandle` exported from `components/ui/drawer.tsx` — future drawers (settings, journal, NPC dialogue) opt into `handleOnly` by wiring it.
+- `SNAP_POINTS` const lives in one place in `poi-drawer.tsx`. If a future ADR challenges 0.7 as "not really half," edit there.
+- Drawer choreography pattern (snap to peek → run async action → snap back) is reusable for other "do a thing while keeping the world visible" interactions.
+
+---
+
 ## 2026-05-03 — M1 PR4 (snap points + avatar fast-travel)
 
 ### Active milestone
