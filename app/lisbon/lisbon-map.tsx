@@ -465,6 +465,12 @@ export function LisbonMap() {
   useEffect(() => {
     let rafId: number | null = null;
     let lastFrameTime: number | null = null;
+    // Local fractional accumulator. Per-frame deltas at 60fps are
+    // ~0.05 game-min; the store rounds advance() to integer minutes
+    // per ADR-005, so per-frame commits would round to 0 and nothing
+    // would advance. We accumulate locally and commit only when a
+    // whole game-minute has elapsed. The remainder carries over.
+    let accumulatedMins = 0;
 
     const tick = (now: number) => {
       // Stop if we left traveling state, or if the tab is hidden.
@@ -474,12 +480,15 @@ export function LisbonMap() {
       if (!travelingRef.current) {
         rafId = null;
         lastFrameTime = null;
+        accumulatedMins = 0;
         return;
       }
       if (typeof document !== "undefined" && document.hidden) {
         // Reset lastFrameTime so the next visible frame doesn't apply
         // a giant delta from the hidden window. This is the "world
-        // waited" semantic the brief asks for.
+        // waited" semantic the brief asks for. The accumulator is
+        // preserved — fractional progress before backgrounding is not
+        // lost.
         lastFrameTime = null;
         rafId = requestAnimationFrame(tick);
         return;
@@ -492,13 +501,16 @@ export function LisbonMap() {
       const deltaSec = (now - lastFrameTime) / 1000;
       lastFrameTime = now;
       const deltaMins = deltaSec * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
-      // Sub-minute deltas are rounded by `advance` (the store rounds
-      // on commit). The cumulative effect over the trip is correct
-      // because we commit per-frame and the store accumulates;
-      // dropping fractional minutes per-frame would lose ~half a
-      // game-minute over a typical leg.
-      if (deltaMins > 0) {
-        useGameClockStore.getState().advance(deltaMins);
+      accumulatedMins += deltaMins;
+      // Commit whole minutes; carry the remainder. Over a 19s airport
+      // leg at 3 game-min/sec we commit ~57 minutes one at a time,
+      // each minute about 333ms apart in real time. The visible
+      // ticking on the clock chip is the cumulative result of these
+      // single-minute commits.
+      if (accumulatedMins >= 1) {
+        const wholeMins = Math.floor(accumulatedMins);
+        accumulatedMins -= wholeMins;
+        useGameClockStore.getState().advance(wholeMins);
       }
       rafId = requestAnimationFrame(tick);
     };

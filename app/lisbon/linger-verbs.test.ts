@@ -83,15 +83,25 @@ describe("lingerVerbFor — night closure", () => {
     expect(verb.quantum).toBe(0);
   });
 
-  it("transit at 02:00 → closed, disabled", () => {
+  it("transit at 02:00 → still 'Watch the planes' (24h hub)", () => {
+    // The airport's openHours says "Open 24h (Terminal 1)"; the linger
+    // verb honors that. Real-phone testing surfaced the prior coherence
+    // bug: 24h prose contradicting a "Closed" button.
     const verb = lingerVerbFor("transit", NIGHT_0200);
-    expect(verb.enabled).toBe(false);
-    expect(verb.label).toMatch(/closed/i);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Watch the planes");
+    expect(verb.quantum).toBe(15);
   });
 
-  it("view at 22:00 → closed, disabled", () => {
+  it("view at 22:00 → still 'Take it in' (24h public space)", () => {
+    // Miradouro de Santa Catarina is a public space — the kiosk closes
+    // around 24:00 but the parapet doesn't. Lingering at night is part
+    // of its cozy register (Adamastor, the river, the 25 de Abril
+    // bridge lit up). Per real-phone testing.
     const verb = lingerVerbFor("view", NIGHT_2200);
-    expect(verb.enabled).toBe(false);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Take it in");
+    expect(verb.quantum).toBe(30);
   });
 
   it("sight at 02:00 → closed, disabled", () => {

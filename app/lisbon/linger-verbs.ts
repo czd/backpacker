@@ -48,6 +48,30 @@ export type LingerVerb = {
 const CLOSED_AT_NIGHT_LABEL = "Closed — come back at 09:00";
 
 /**
+ * POI types that *always* offer a linger verb regardless of phase.
+ *
+ * Real coherence with the seeded `openHours` strings:
+ *   - hostel    → 24h reception (handled separately as the Sleep verb)
+ *   - transit   → "Open 24h (Terminal 1)" — the airport doesn't close
+ *   - view      → "Open 24h — best at sunset" — the miradouro is a
+ *                 public space; it's MORE cozy at night, not less
+ *
+ * POI types that DO close at night:
+ *   - sight     → castle has explicit visiting hours
+ *   - market    → mercado closes 24:00 in summer, earlier in winter
+ *
+ * **M2 follow-up:** the right model is a structured `availability`
+ * field on the POI document (open/close ranges per day) so the closure
+ * logic isn't a hardcoded type list. M2's schema work introduces this;
+ * for M1 the type-based rule matches the seed accurately and keeps the
+ * "24h" prose from contradicting the closure label on real phones.
+ */
+const ALWAYS_OPEN_TYPES: ReadonlySet<PoiMarkerType> = new Set([
+  "transit",
+  "view",
+]);
+
+/**
  * Resolve the linger verb for a POI given the current game time.
  *
  * @param type POI type (drives the verb wording).
@@ -74,8 +98,10 @@ export function lingerVerbFor(
     };
   }
 
-  // Non-hostel at night → closed.
-  if (isNight) {
+  // Night closure applies only to types that genuinely close. 24h
+  // public spaces (the airport, the miradouro) keep their daytime
+  // verb at night so the prose stays coherent with the closure UI.
+  if (isNight && !ALWAYS_OPEN_TYPES.has(type)) {
     return {
       label: CLOSED_AT_NIGHT_LABEL,
       // Quantum is meaningless when disabled, but pick 0 so an

@@ -315,6 +315,17 @@ function SlidingDigits({
       className="relative inline-block overflow-hidden align-baseline"
       style={{ width: "2ch", height: "1em" }}
     >
+      {/* Invisible baseline anchor. An inline-block with explicit width,
+          explicit height, and only absolutely-positioned children has no
+          inline content to set its baseline — CSS falls back to the box's
+          bottom edge, which pushes the colon (which has a real glyph
+          baseline) below the visible digits and creates the misalignment
+          the owner reported on real-phone testing. The duplicated value
+          here is hidden via `invisible` (preserves layout) and
+          aria-hidden so screen readers don't read every digit twice. */}
+      <span aria-hidden="true" className="invisible select-none">
+        {value}
+      </span>
       <AnimatePresence initial={false} mode="popLayout">
         <motion.span
           key={value}
