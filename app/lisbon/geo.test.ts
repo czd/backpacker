@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   bearingDeg,
+  boundsForFit,
+  centroidOf,
   haversineKm,
   lerp,
   travelDurationMs,
@@ -157,6 +159,88 @@ describe("lerp", () => {
     // is the pure mathematical function.
     expect(lerp(10, 20, 2)).toBe(30);
     expect(lerp(10, 20, -1)).toBe(0);
+  });
+});
+
+describe("centroidOf", () => {
+  it("throws on an empty list (avoids the Gulf of Guinea silent failure)", () => {
+    expect(() => centroidOf([])).toThrow();
+  });
+
+  it("returns the single point for a 1-element list", () => {
+    expect(centroidOf([HOSTEL])).toEqual(HOSTEL);
+  });
+
+  it("returns the midpoint for a 2-element list", () => {
+    const c = centroidOf([HOSTEL, CASTELO]);
+    expect(c.lng).toBeCloseTo((HOSTEL.lng + CASTELO.lng) / 2, 9);
+    expect(c.lat).toBeCloseTo((HOSTEL.lat + CASTELO.lat) / 2, 9);
+  });
+
+  it("returns the arithmetic mean of N points (the central-cluster centroid)", () => {
+    // The four non-airport POIs in the seed — the cluster centroid
+    // we use for the initial fit-bounds.
+    const cluster = [HOSTEL, CASTELO, MIRADOURO, MERCADO];
+    const c = centroidOf(cluster);
+    const expectedLng =
+      (HOSTEL.lng + CASTELO.lng + MIRADOURO.lng + MERCADO.lng) / 4;
+    const expectedLat =
+      (HOSTEL.lat + CASTELO.lat + MIRADOURO.lat + MERCADO.lat) / 4;
+    expect(c.lng).toBeCloseTo(expectedLng, 9);
+    expect(c.lat).toBeCloseTo(expectedLat, 9);
+    // Sanity: the centroid sits inside central Lisbon (rough bbox).
+    expect(c.lng).toBeGreaterThan(-9.16);
+    expect(c.lng).toBeLessThan(-9.13);
+    expect(c.lat).toBeGreaterThan(38.70);
+    expect(c.lat).toBeLessThan(38.72);
+  });
+});
+
+describe("boundsForFit", () => {
+  it("throws on an empty list", () => {
+    expect(() => boundsForFit([])).toThrow();
+  });
+
+  it("returns a zero-area bbox for a single point", () => {
+    const [sw, ne] = boundsForFit([HOSTEL]);
+    expect(sw).toEqual([HOSTEL.lng, HOSTEL.lat]);
+    expect(ne).toEqual([HOSTEL.lng, HOSTEL.lat]);
+  });
+
+  it("returns [[minLng,minLat],[maxLng,maxLat]] for N points", () => {
+    // Airport (north) + cluster centroid (central Lisbon). The bbox
+    // should span from min-lng to max-lng and min-lat to max-lat.
+    const cluster = centroidOf([HOSTEL, CASTELO, MIRADOURO, MERCADO]);
+    const [[swLng, swLat], [neLng, neLat]] = boundsForFit([
+      AIRPORT,
+      cluster,
+    ]);
+    expect(swLng).toBe(Math.min(AIRPORT.lng, cluster.lng));
+    expect(swLat).toBe(Math.min(AIRPORT.lat, cluster.lat));
+    expect(neLng).toBe(Math.max(AIRPORT.lng, cluster.lng));
+    expect(neLat).toBe(Math.max(AIRPORT.lat, cluster.lat));
+  });
+
+  it("avatar+destination bbox spans both points (during-travel fit)", () => {
+    // The Fix-3 use case: the camera fits the origin (avatar) and
+    // destination (POI) before fast-travel kicks off. Either endpoint
+    // can be the SW or NE corner depending on orientation.
+    for (const [a, b] of [
+      [AIRPORT, HOSTEL],
+      [HOSTEL, CASTELO],
+      [HOSTEL, MIRADOURO],
+      [MERCADO, AIRPORT],
+    ]) {
+      const [[swLng, swLat], [neLng, neLat]] = boundsForFit([a, b]);
+      expect(swLng).toBeLessThanOrEqual(a.lng);
+      expect(swLng).toBeLessThanOrEqual(b.lng);
+      expect(swLat).toBeLessThanOrEqual(a.lat);
+      expect(swLat).toBeLessThanOrEqual(b.lat);
+      expect(neLng).toBeGreaterThanOrEqual(a.lng);
+      expect(neLng).toBeGreaterThanOrEqual(b.lng);
+      expect(neLat).toBeGreaterThanOrEqual(a.lat);
+      expect(neLat).toBeGreaterThanOrEqual(b.lat);
+    }
   });
 });
 

@@ -459,39 +459,90 @@ export function PoiDrawer({
          * standard iOS-cozy bottom-sheet affordance), and a tap on the
          * full snap dismisses the sheet — both inherited from Vaul.
          *
-         * Visual treatment matches the previous cozy handle:
-         *  - 36px wide × 4px tall (`w-9 h-1`) — tighter than Vaul's
-         *    default 32×6 so the handle reads as a discreet grip, not a
-         *    UI banner. (We pass `bg-transparent` to the wrapper, then
-         *    paint our own warm tint via the inner `[&>span]:bg-...`
-         *    selector — Vaul renders an inner span as the visible
-         *    pill.)
+         * **M1 PR4-fixup-2 root-cause**: real-phone testing showed the
+         * handle hugging the right edge of the drawer. Cause: Vaul ships
+         * a runtime CSS injection (`__insertCSS` at module top of
+         * `vaul/dist/index.mjs`) that appends a `<style>` to `<head>`
+         * AFTER our Tailwind utility stylesheet. The injected rules
+         * include
+         *
+         *     [data-vaul-handle] {
+         *       display: block;
+         *       position: relative;
+         *       margin-left: auto;
+         *       margin-right: auto;
+         *       width: 32px;
+         *       height: 5px;
+         *       ...
+         *     }
+         *
+         * The selector `[data-vaul-handle]` and our utility class
+         * selectors (`.absolute`, `.h-6`, `.w-16`, …) have **equal**
+         * specificity (0,1,0). With Vaul's stylesheet later in source
+         * order, Vaul wins every per-property contest. Net result:
+         *  - `position: relative` (Vaul) overrides our `.absolute`
+         *  - Vaul's `width: 32px / height: 5px` wins over our `w-16/h-6`
+         *  - Vaul's `margin: auto` is honored — but our `left-1/2`
+         *    (`left: 50%`) THEN shifts the (now-relative) element 195px
+         *    further right. Hence the visible right-bias.
+         *
+         * **Fix**: drop the absolute positioning entirely. Vaul's own
+         * `margin: auto` + `position: relative` already centers the
+         * handle in the flex-column DrawerContent's cross-axis. We
+         * override only the property pair that disagrees with cozy
+         * (background, dimensions, opacity), using Tailwind v4's `!`
+         * important modifier so our utilities win the cascade against
+         * Vaul's identically-specific selector.
+         *
+         * Visual treatment:
+         *  - 36px wide × 4px tall visible pill (`w-9 h-1` on the inner
+         *    span — child of Vaul's auto-rendered hitarea).
          *  - `bg-muted-foreground/40` — warm muted-foreground tone at
          *    40% alpha; cozy in both light and dark schemes.
-         *  - `top-2.5` (10px from sheet top) leaves ~12px of breathing
-         *    room above the body content area.
-         *  - The wrapper itself receives the click target; Vaul renders
-         *    an inner `<span data-vaul-handle-hitarea>` for the actual
-         *    interaction zone. We size the wrapper at h-6 so the
-         *    invisible hit area is a comfortable 24px tall (exceeds
-         *    finger-friendly minimums; the visible pill is 4px tall
-         *    and centered inside).
+         *  - `mt-2.5` (10px from sheet top) for breathing above content.
+         *  - The wrapper is `!h-6 !w-16` (24px × 64px invisible hit
+         *    area). The visible pill child centers inside Vaul's
+         *    auto-injected `<span data-vaul-handle-hitarea>` (which
+         *    Vaul absolute-centers to 50% / 50% of the wrapper at
+         *    a `max(100%, 44px)` size — already a 44pt-floor hit area).
          */}
         <DrawerHandle
           data-testid="poi-drawer-handle"
           className={cn(
-            "absolute left-1/2 top-1 z-10 flex items-center justify-center",
-            "-translate-x-1/2",
-            // Comfortable invisible hit area; the visible pill inside
-            // is the 4×36 grip. Tap-target floor (§6.2) is satisfied
-            // by the wrapper hit area, not the visual.
-            "h-6 w-16",
+            // Override Vaul's auto-injected `[data-vaul-handle]` rules
+            // with `!` important. We do NOT use absolute positioning
+            // here: Vaul's own `position: relative` + `margin: auto`
+            // centers the handle on the cross-axis of the
+            // flex-column DrawerContent, which is exactly what we
+            // want. Layering our `absolute` on top would just trigger
+            // the right-bias bug again.
+            "!flex !items-center !justify-center",
+            // Top breathing room (`mt-2.5` = 10px). Sits above the
+            // body content (which has its own `pt-7` for the
+            // header). Vaul's CSS doesn't set `margin-top`, so this
+            // doesn't need `!`.
+            "mt-2.5",
+            // Wrapper hit-target. `!h-6 !w-16` = 24×64px invisible
+            // chrome around the visible pill. Vaul's `width: 32px;
+            // height: 5px;` would otherwise win.
+            "!h-6 !w-16",
+            // Kill Vaul's default greyscale background; the cozy
+            // pill child carries the visible paint.
+            "!bg-transparent",
+            // Vaul ships `opacity: 0.7` on `[data-vaul-handle]`,
+            // which would dim our cozy pill. Force full opacity so
+            // the pill renders at its declared `bg-muted-foreground/40`.
+            "!opacity-100",
             // Vaul wraps children in `<span data-vaul-handle-hitarea>`.
             // Force that span to fill the wrapper so the visible pill
             // child centers correctly against the wrapper's flex
-            // container.
-            "[&>span]:flex [&>span]:h-full [&>span]:w-full",
-            "[&>span]:items-center [&>span]:justify-center",
+            // container. Vaul's CSS positions the hitarea
+            // `absolute; left:50%; top:50%; transform: translate(-50%,-50%)`
+            // with size `max(100%, 44px)` — so it already overflows
+            // our wrapper to a 44pt floor on both axes. Our
+            // `[&>span]` rules layer on flex-centering for the inner
+            // pill child, which Vaul does NOT control.
+            "[&>span]:flex [&>span]:items-center [&>span]:justify-center",
           )}
         >
           {/*
@@ -578,11 +629,16 @@ function PoiDrawerBody({
       className={cn(
         // Outer padding: 16px base unit per §6.4. `px-6` (24px) reads
         // more breathable than the default `p-4` shadcn ships with for
-        // DrawerHeader. `pt-7` clears the cozy drag-handle (which sits
-        // at top-1 + h-6 = 28px from the sheet edge) with a small
-        // breathing margin before the title. Vertical gap between
-        // sections is owned by the children (`pb-4` on header/hours).
-        "flex flex-col px-6 pb-6 pt-7",
+        // DrawerHeader.
+        //
+        // **PR4-fixup-2**: the handle was previously absolute-positioned
+        // (top-1 + h-6 = 28px), so the body needed `pt-7` to clear it.
+        // The handle now sits in natural flex-column flow above this
+        // body (h-6 + mt-2.5 = ~34px), so the body's top padding only
+        // needs to add a small breathing margin — `pt-3` (12px) keeps
+        // the title comfortably below the handle without piling extra
+        // whitespace on top of what the handle already contributes.
+        "flex flex-col px-6 pb-6 pt-3",
         // Bottom safe area on top of the explicit pb-6 — the gesture
         // bar on Android adds variable padding too.
         "pb-safe",

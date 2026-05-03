@@ -138,6 +138,73 @@ export function lerp(a: number, b: number, t: number): number {
 }
 
 /**
+ * Centroid (mean lng/lat) of a non-empty list of points. Used to derive a
+ * single representative coordinate for a cluster of POIs — e.g. "central
+ * Lisbon" as the mean of the four non-airport POIs in the seed. The
+ * arithmetic mean is the right shape here: the cluster is small relative
+ * to Earth's curvature, so spherical-correct centroid math (Cartesian
+ * conversion + back-projection) would be over-engineering. For city-scale
+ * clusters the divergence is sub-meter.
+ *
+ * Throws on an empty array — there is no meaningful centroid of nothing
+ * and silently returning `{lng:0, lat:0}` would land the camera in the
+ * Gulf of Guinea, which is the worst possible silent failure mode for
+ * a "where am I?" affordance. Callers must guard.
+ */
+export function centroidOf(points: ReadonlyArray<LngLat>): LngLat {
+  if (points.length === 0) {
+    throw new Error("centroidOf: empty point list has no centroid");
+  }
+  let lng = 0;
+  let lat = 0;
+  for (const p of points) {
+    lng += p.lng;
+    lat += p.lat;
+  }
+  return {
+    lng: lng / points.length,
+    lat: lat / points.length,
+  };
+}
+
+/**
+ * Bounding box of a non-empty list of points, returned as a MapLibre-shaped
+ * `[[swLng, swLat], [neLng, neLat]]` tuple suitable for `Map.fitBounds`.
+ *
+ * For two identical points the bounding box collapses to a zero-area
+ * rectangle, which `fitBounds` handles by zooming to its `maxZoom` (or
+ * the map's `maxZoom`) and centering. That's the right behavior for the
+ * "everything's already at one place" edge case (e.g. the avatar started
+ * at the same lat/lng as a single POI).
+ *
+ * Used for the M1 PR4-fixup-2 initial-fit (avatar + cluster centroid) and
+ * the during-travel fit (origin + destination).
+ */
+export function boundsForFit(
+  points: ReadonlyArray<LngLat>,
+): [[number, number], [number, number]] {
+  if (points.length === 0) {
+    throw new Error("boundsForFit: empty point list has no bounds");
+  }
+  let minLng = points[0].lng;
+  let maxLng = points[0].lng;
+  let minLat = points[0].lat;
+  let maxLat = points[0].lat;
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (p.lng < minLng) minLng = p.lng;
+    if (p.lng > maxLng) maxLng = p.lng;
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+  }
+  // MapLibre wants [southwest, northeast] = [[minLng, minLat], [maxLng, maxLat]].
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ];
+}
+
+/**
  * Travel duration scales linearly with straight-line distance.
  * 600ms per km — owner-tuned 2026-05-03 after real-phone testing
  * showed the previous clamps (max(1600, min(3000, ...))) made

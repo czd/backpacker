@@ -17,6 +17,8 @@ import type { Doc } from "../../convex/_generated/dataModel";
 import { AvatarMarker } from "./avatar-marker";
 import {
   bearingDeg,
+  boundsForFit,
+  centroidOf,
   haversineKm,
   lerp,
   travelDurationMs,
@@ -24,6 +26,7 @@ import {
 } from "./geo";
 import { PoiMarker } from "./poi-marker";
 import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
+import { RecenterButton } from "./recenter-button";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -87,6 +90,49 @@ const SNAP_TO_PEEK_DELAY_MS = 250;
 // renders (react-map-gl uses these IDs as keys).
 const TRAIL_LAYER_ID = "travel-trail";
 const TRAIL_SOURCE_ID = "travel-trail-source";
+
+/**
+ * Slug of the airport POI. Used to filter the airport out of the
+ * "central cluster" centroid for the initial-fit. The avatar starts at
+ * the airport (north of central Lisbon, ~6.4km out); including it in the
+ * centroid would pull the cluster center north and waste the fit. Using
+ * only the four central POIs as the cluster gives "the player and central
+ * Lisbon, both visible" — cleaner framing per the M1 PR4-fixup-2 brief.
+ */
+const AIRPORT_POI_SLUG = "lisbon-aeroporto";
+
+/**
+ * Padding for the initial fit-bounds (no drawer is open at first paint).
+ * Tighter on the bottom because there's no drawer to clear; comfortable
+ * 50px on top/left/right so neither the avatar nor the central cluster
+ * sits flush against an edge.
+ */
+const INITIAL_FIT_PADDING = {
+  top: 50,
+  right: 50,
+  bottom: 30,
+  left: 50,
+} as const;
+
+/**
+ * Bottom padding for the during-travel fit-bounds, expressed as a
+ * fraction of viewport height. The drawer is at peek (~30%) during
+ * travel, plus a small buffer so origin/destination don't sit just
+ * above the drawer edge. 32% covers both.
+ */
+const TRAVEL_FIT_BOTTOM_FRACTION = 0.32;
+const TRAVEL_FIT_HORIZONTAL_PADDING = 80;
+const TRAVEL_FIT_TOP_PADDING = 80;
+
+/**
+ * Recenter `easeTo` zoom level. Tighter than the initial-fit (which
+ * frames the whole airport→cluster span) — at z14 the player can see
+ * their immediate surroundings without losing context. Matches the
+ * M1 PR4-fixup-2 brief's "easeTo player at zoom 14."
+ */
+const RECENTER_ZOOM = 14;
+const RECENTER_DURATION_MS = 600;
+const TRAVEL_FIT_DURATION_MS = 600;
 
 // Trail fade-out duration after arrival. ~400ms matches AGENTS.md §6.5
 // page-transition baseline — long enough to read as "the trail dissolves,"
@@ -253,6 +299,21 @@ export function LisbonMap() {
   // Imperative handle on the map for `panTo`.
   const mapRef = useRef<MapRef | null>(null);
 
+  // Whether the MapLibre instance has fired its `load` event. We need this
+  // before any imperative camera move (fitBounds, easeTo); on a fresh
+  // mount the map's internal state hasn't settled and a fitBounds call
+  // pre-load is silently dropped or — worse — applied to an uninitialized
+  // viewport. The flag flips true exactly once per LisbonMap mount.
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Whether the initial-fit (avatar + cluster centroid) has already run.
+  // The fit is a one-time gesture on first POI-load; after that the
+  // player owns the camera and we don't want to keep re-fitting on
+  // subsequent re-renders (e.g. a Convex POI mutation that adds a POI in
+  // M2+ would otherwise yank the camera back to the bounds). Held in a
+  // ref so updating doesn't trigger a re-render.
+  const didInitialFitRef = useRef(false);
+
   // Generation counter for fast-travel runs. When a new travel starts,
   // the counter increments; any in-flight animate() callbacks still
   // belonging to the previous run check this and bail out before
@@ -295,6 +356,82 @@ export function LisbonMap() {
     },
     [],
   );
+
+  /**
+   * Initial fit-bounds: frame the avatar AND the central cluster centroid
+   * so the player doesn't open the map asking "where am I?" — option (b)
+   * from the PR4-fixup-2 brief. The airport sits ~6.4km north of central
+   * Lisbon, so option (a) (full POI bbox) would zoom the map out further
+   * than ideal; option (b) is "the player and central Lisbon, both
+   * visible," which reads as a deliberate framing rather than a
+   * fits-everything zoom.
+   *
+   * Runs once per mount, gated on:
+   *   - `pois` resolved (the seed has loaded; we have coordinates)
+   *   - `mapLoaded` true (MapLibre's `load` event has fired; the map's
+   *     internal state is settled)
+   *   - `didInitialFitRef.current` false (we haven't already fit)
+   *
+   * No animation on the initial fit — first paint should be instant per
+   * the brief. `{ duration: 0 }` is the MapLibre knob; `essential: false`
+   * is belt-and-braces for any future engine that interprets duration:0
+   * as "still animate, just fast."
+   */
+  useEffect(() => {
+    if (!mapLoaded) return;
+    if (didInitialFitRef.current) return;
+    if (!pois || pois.length === 0) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Cluster = all non-airport POIs. Centroid is the mean of those.
+    // If the seed ever ships without an airport (vanishingly unlikely
+    // given M1 PR1's checklist) the filter falls through to "all POIs"
+    // and the centroid is still meaningful.
+    const cluster = pois.filter((p) => p.slug !== AIRPORT_POI_SLUG);
+    const clusterPoints: LngLat[] =
+      cluster.length > 0
+        ? cluster.map((p) => ({ lng: p.lng, lat: p.lat }))
+        : pois.map((p) => ({ lng: p.lng, lat: p.lat }));
+    const clusterCentroid = centroidOf(clusterPoints);
+
+    // Fit avatar + cluster centroid. Two points; fitBounds zooms to
+    // make both visible with our padding spec. The avatar starts at
+    // AIRPORT_COORDS (the same lat/lng as the airport POI), so the
+    // bounds span "airport ↔ central Lisbon."
+    const bounds = boundsForFit([avatar, clusterCentroid]);
+    map.fitBounds(bounds, {
+      padding: INITIAL_FIT_PADDING,
+      animate: false,
+      duration: 0,
+      essential: false,
+    });
+    didInitialFitRef.current = true;
+    // The dependency on `avatar` is intentionally stale-safe: the
+    // initial fit cares about the avatar's *initial* position
+    // (AIRPORT_COORDS), and the ref-guard prevents re-fits on later
+    // avatar moves. We list the dep so the linter is happy and so the
+    // effect is correct if a future change moves the avatar before
+    // first POI-load.
+  }, [mapLoaded, pois, avatar]);
+
+  /**
+   * Recenter the camera on the avatar. AGENTS.md §7.1: "tap 'recenter'
+   * to return." Calmer `easeTo` (not `flyTo`) per §6.5; non-essential
+   * so MapLibre jump-cuts under prefers-reduced-motion (the player
+   * still needs to know where they went, but the pan animation itself
+   * is reducible).
+   */
+  const handleRecenter = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.easeTo({
+      center: [avatar.lng, avatar.lat],
+      zoom: RECENTER_ZOOM,
+      duration: RECENTER_DURATION_MS,
+      essential: false,
+    });
+  }, [avatar]);
 
   /**
    * Pan the camera to the given POI with the offset appropriate to the
@@ -465,23 +602,55 @@ export function LisbonMap() {
   /**
    * Travel-here button handler. Runs the choreographed sequence:
    *   1. Snap drawer to peek so the map is visible during travel
-   *   2. Run the fast-travel animation
+   *      AND fit the camera to [origin, destination] so both endpoints
+   *      are visible (in parallel — separate visual layers, no conflict).
+   *   2. Run the fast-travel animation.
    *   3. Snap drawer back to half; mark the avatar as "at" this POI so
-   *      the button flips to "You're here"
+   *      the button flips to "You're here". The existing handlePoiSelect
+   *      pan-with-half-snap-offset logic re-runs implicitly via the
+   *      panToPoi handler chain when the snap reverts to half.
    *
-   * Under prefers-reduced-motion: skip the choreography entirely
-   * (no snap-down, no snap-back). The fast-travel itself already short-
-   * circuits to a jump-cut under reduced-motion via fastTravelTo's
-   * own branch. We still update `currentPoiSlug` so the button copy
-   * flips to "You're here."
+   * The fit-bounds step is the M1 PR4-fixup-2 fix for the owner's
+   * "all you see is lines coming towards you" complaint: when origin
+   * or destination was offscreen, the camera previously held its frame
+   * and the player saw only the dotted trail moving. Now both endpoints
+   * are visible for the duration of the trip.
+   *
+   * Under prefers-reduced-motion: skip the snap-down / snap-back
+   * choreography (no drawer height animation). The fit-bounds still
+   * runs but with `duration: 0` so the camera jumps to the new frame
+   * instantly — the player still needs to be able to see the avatar
+   * arrive, even when motion is reduced.
    */
   const handleTravelTo = useCallback(
     async (poi: Doc<"pois">) => {
+      const map = mapRef.current;
+      const destination: LngLat = { lng: poi.lng, lat: poi.lat };
+
+      // 1a. Camera fits both endpoints. Padding accounts for the drawer
+      //     at peek (~30% bottom + a small buffer = ~32%) so neither
+      //     endpoint sits flush against the drawer edge.
+      if (map) {
+        const bounds = boundsForFit([avatar, destination]);
+        const height = map.getContainer().clientHeight;
+        map.fitBounds(bounds, {
+          padding: {
+            top: TRAVEL_FIT_TOP_PADDING,
+            right: TRAVEL_FIT_HORIZONTAL_PADDING,
+            bottom: Math.round(height * TRAVEL_FIT_BOTTOM_FRACTION),
+            left: TRAVEL_FIT_HORIZONTAL_PADDING,
+          },
+          duration: reducedMotion ? 0 : TRAVEL_FIT_DURATION_MS,
+          essential: false,
+        });
+      }
+
       if (!reducedMotion) {
-        // 1. Snap drawer to peek. setActiveSnapPoint is synchronous
-        //    (React state update); Vaul's actual height animation runs
-        //    ~250ms. We wait that beat before kicking off the travel so
-        //    the map is unobscured when the avatar starts moving.
+        // 1b. Snap drawer to peek. setActiveSnapPoint is synchronous
+        //     (React state update); Vaul's actual height animation runs
+        //     ~250ms. We wait that beat before kicking off the travel
+        //     so the map is unobscured when the avatar starts moving.
+        //     The fit-bounds animation runs concurrently with this.
         setActiveSnapPoint(SNAP_POINTS[0]);
         await new Promise<void>((resolve) =>
           setTimeout(resolve, SNAP_TO_PEEK_DELAY_MS),
@@ -490,18 +659,20 @@ export function LisbonMap() {
 
       // 2. Run the fast-travel. This awaits to completion (or, under
       //    reduced-motion, to the 200ms traveling-flag flash).
-      await fastTravelTo({ lng: poi.lng, lat: poi.lat });
+      await fastTravelTo(destination);
 
       // 3. Mark the avatar as at this POI; flip the drawer back to half
       //    if we snapped it down. Under reduced-motion we leave the
       //    drawer at whatever snap the player had it at — minimum
-      //    motion, per §6.5.
+      //    motion, per §6.5. The half-snap re-pan with offset is
+      //    handled by the existing panToPoi via the snap-change
+      //    callback chain.
       setCurrentPoiSlug(poi.slug);
       if (!reducedMotion) {
         setActiveSnapPoint(DEFAULT_SNAP);
       }
     },
-    [fastTravelTo, reducedMotion],
+    [avatar, fastTravelTo, reducedMotion],
   );
 
   /**
@@ -579,6 +750,14 @@ export function LisbonMap() {
       {cozyStyle ? (
         <Map
           ref={mapRef}
+          // The initialViewState remains the holdover frame: it's what
+          // the map paints with on first mount when `pois` is still
+          // resolving. Once `pois` resolves and the map has fired its
+          // `load` event, the initial-fit useEffect above runs
+          // `fitBounds([avatar, cluster-centroid])` to frame both the
+          // player and central Lisbon. We don't `flyTo` from this
+          // initial center — `animate: false` makes it a jump-cut so
+          // first paint is instant.
           initialViewState={{
             longitude: LISBON_CENTER[0],
             latitude: LISBON_CENTER[1],
@@ -587,6 +766,13 @@ export function LisbonMap() {
             bearing: 0,
           }}
           mapStyle={cozyStyle}
+          // The `load` event is MapLibre's signal that its internal
+          // state has settled and imperative camera moves are safe.
+          // Before this event, fitBounds/easeTo/etc are silently
+          // dropped or applied to an uninitialized viewport. We
+          // mirror the event to a React state flag so the
+          // initial-fit useEffect can gate on it.
+          onLoad={() => setMapLoaded(true)}
           // Mobile gesture sanity:
           // - doubleClickZoom off because future POI tap-handling needs the
           //   double-tap window unambiguous.
@@ -747,6 +933,18 @@ export function LisbonMap() {
           </Marker>
         </Map>
       ) : null}
+
+      {/*
+       * Recenter button (§7.1 "tap 'recenter' to return"). Top-right,
+       * safe-area-aware. Hidden during fast-travel — the camera is
+       * already focused on the avatar's trip, a recenter affordance
+       * there would be unnecessary noise. The button itself is purely
+       * presentational; the parent owns the easeTo. M2+ may add
+       * adjacent HUD chrome to this corner (journal-open chip, settings
+       * dot, etc.) — keeping the JSX here minimal so that addition is
+       * a sibling rather than a refactor.
+       */}
+      <RecenterButton onTap={handleRecenter} hidden={traveling} />
 
       {/*
        * AGENTS.md §6.8 mandates a list-view alternative: "every POI is also
