@@ -101,4 +101,146 @@ test.describe("/lisbon", () => {
     const zoomIn = page.locator(".maplibregl-ctrl-zoom-in");
     await expect(zoomIn).toBeHidden();
   });
+
+  // M1 PR3 — POI markers + drawer.
+  // §13 M1 DoD: "POI markers are 44px+ and visually distinct by type.
+  // Tapping a POI opens a `Drawer` (bottom sheet)..."
+  // These tests assume the dev Convex deployment is seeded (per STATUS,
+  // the owner has run `bunx convex run seed:seedLisbon`); without seed
+  // data the marker assertions fail at "exactly 5 markers". That's the
+  // right failure mode — if a future contributor's environment is
+  // unseeded, this signals it loudly.
+
+  test("renders exactly 5 POI markers from the Lisbon seed", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    // Each marker is rendered with a stable `data-testid` of
+    // `poi-marker-<slug>`. We use the testid prefix to count them.
+    // The Convex realtime query resolves over WebSocket; under parallel
+    // test load this can take a beat longer than the page's first paint.
+    // `toHaveCount` polls until the assertion holds, which is the right
+    // shape for a realtime query.
+    const markers = page.locator('[data-testid^="poi-marker-"]');
+    await expect(markers).toHaveCount(5);
+  });
+
+  test("each POI marker is at least 44×44px (§6.2 touch floor)", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    const markers = page.locator('[data-testid^="poi-marker-"]');
+    // Wait for all 5 markers to mount before measuring — under parallel
+    // test load the realtime query can resolve a beat after the dev
+    // poi-count affordance renders.
+    await expect(markers).toHaveCount(5);
+    const count = await markers.count();
+    expect(count).toBe(5);
+    // Markers mount with a per-index 80ms stagger and a ~250ms spring; the
+    // §6.2 44pt floor is the *resting* size. Pre-settle, the springs pass
+    // through scale < 1 and a transient measurement would (correctly)
+    // report < 44px. We poll EVERY marker (not just the last) because under
+    // parallel test load the stagger order isn't deterministic at the
+    // measurement boundary — any one marker can still be settling. Using
+    // `expect.poll` keeps the test responsive when animations land faster.
+    for (let i = 0; i < count; i++) {
+      await expect
+        .poll(
+          async () => {
+            const box = await markers.nth(i).boundingBox();
+            return box ? Math.min(box.width, box.height) : 0;
+          },
+          {
+            timeout: 3000,
+            message: `marker ${i} did not reach the 44px floor`,
+          },
+        )
+        .toBeGreaterThanOrEqual(44);
+      // §6.2: 44pt iOS / 48dp Android. The marker is intentionally h-12 w-12
+      // = 48px; we assert the floor rather than the exact value so a
+      // future visual tweak (e.g. h-11 = 44px) doesn't break the test.
+      const box = await markers.nth(i).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(44);
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test("tapping a POI marker opens the drawer with the POI name", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    // Wait for markers to mount over the realtime query.
+    await expect(
+      page.locator('[data-testid^="poi-marker-"]'),
+    ).toHaveCount(5);
+    // Tap the Castelo de São Jorge marker (sight type, one of the seed POIs).
+    const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
+    await expect(castelo).toBeVisible();
+    await castelo.click();
+    // Vaul portals the drawer to <body> with role="dialog". The drawer
+    // body carries `data-testid="poi-drawer-body"`; the title carries
+    // `poi-drawer-title` and contains the POI name.
+    const drawer = page.getByTestId("poi-drawer-body");
+    await expect(drawer).toBeVisible();
+    await expect(page.getByTestId("poi-drawer-title")).toHaveText(
+      "Castelo de São Jorge",
+    );
+    // The marker reflects selected state via aria-pressed="true".
+    await expect(castelo).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("Escape closes the drawer and deselects the marker", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    await expect(
+      page.locator('[data-testid^="poi-marker-"]'),
+    ).toHaveCount(5);
+    const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
+    await castelo.click();
+    const drawerBody = page.getByTestId("poi-drawer-body");
+    await expect(drawerBody).toBeVisible();
+    // Vaul honors the Escape key for dismissal. The drag-down-to-close
+    // gesture is hard to simulate in Playwright; Escape is the canonical
+    // keyboard-equivalent path and matches §6.8 keyboard accessibility.
+    await page.keyboard.press("Escape");
+    // The drawer body unmounts (Vaul's exit animation completes); the
+    // marker's aria-pressed flips back to "false". We poll on
+    // aria-pressed because the exit animation is async.
+    await expect(drawerBody).toBeHidden();
+    await expect(castelo).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("sr-only places-of-interest list satisfies §6.8 list-view alternative", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    await expect(
+      page.locator('[data-testid^="poi-marker-"]'),
+    ).toHaveCount(5);
+    // The list is `sr-only` (Tailwind's screen-reader-only utility:
+    // visually hidden but in the accessibility tree). We query by ARIA
+    // label, not visibility. Playwright's getByRole respects the
+    // accessibility tree even for sr-only elements.
+    const list = page.getByRole("list", { name: "Places of interest" });
+    await expect(list).toHaveCount(1);
+    const items = list.locator("button");
+    await expect(items).toHaveCount(5);
+    // Activating an sr-only list item opens the same drawer as a marker tap.
+    // This is the keyboard-only / screen-reader path through §6.8. We use
+    // `dispatchEvent('click')` rather than `click()` because Playwright's
+    // actionability checks consider sr-only elements (1×1px clipped) to be
+    // not visible enough to click; that's correct user-facing behavior but
+    // wrong for testing the keyboard/AT path. A real screen-reader user
+    // activates the button via Enter on focus, which fires a synthetic
+    // click — same DOM event as `dispatchEvent('click')`.
+    await items
+      .filter({ hasText: "Castelo de São Jorge" })
+      .dispatchEvent("click");
+    await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
+    await expect(page.getByTestId("poi-drawer-title")).toHaveText(
+      "Castelo de São Jorge",
+    );
+  });
 });

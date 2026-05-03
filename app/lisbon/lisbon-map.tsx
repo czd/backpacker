@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
-import { Map, NavigationControl } from "react-map-gl/maplibre";
+import {
+  Map,
+  Marker,
+  NavigationControl,
+  type MapRef,
+} from "react-map-gl/maplibre";
 import type { StyleSpecification } from "maplibre-gl";
 import { api } from "../../convex/_generated/api";
+import type { Doc } from "../../convex/_generated/dataModel";
+import { PoiMarker } from "./poi-marker";
+import { PoiDrawer, type Poi } from "./poi-drawer";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -105,9 +113,9 @@ function useCozyStyle(prefersDark: boolean | null): StyleSpecification | null {
 }
 
 export function LisbonMap() {
-  // Realtime POI query — held for now, rendered as markers in M1 PR3.
-  // `undefined` while loading; `[]` if the seed didn't run; otherwise
-  // the 5 Lisbon POIs from M1 PR1.
+  // Realtime POI query. `undefined` while loading; `[]` if the seed didn't
+  // run; otherwise the 5 Lisbon POIs from M1 PR1. M1 PR3 (this slice) wires
+  // the result into <Marker> children below and into the sr-only list view.
   const pois = useQuery(api.pois.getPoisByCity, { city: "lisbon" });
 
   if (pois !== undefined && pois.length === 0) {
@@ -131,6 +139,57 @@ export function LisbonMap() {
   // level so the swap is visually quiet).
   const prefersDark = usePrefersDark();
   const cozyStyle = useCozyStyle(prefersDark);
+
+  // Selected POI state. `Doc<"pois">` is the canonical Convex document type
+  // for the pois table; it's also a structural superset of the `Poi` shape
+  // <PoiDrawer> takes (it has slug/name/type/description/openHours plus the
+  // extra Convex fields, which the drawer ignores). Driving "selected POI"
+  // and "drawer open" off the same state is the §6.3 single-source-of-truth
+  // pattern UI Designer's slice flagged.
+  const [selectedPoi, setSelectedPoi] = useState<Doc<"pois"> | null>(null);
+
+  // Imperative handle on the map for `panTo`. AGENTS.md §6.3 calls for the
+  // bottom sheet to obscure the map at the half-snap; until M1 PR4 ships
+  // the three-snap-point drawer (peek leaves the map fully visible), we
+  // mitigate the obscured-tapped-marker problem by panning the marker into
+  // the upper third of the viewport when the drawer opens. See the
+  // `handlePoiSelect` comment below for the offset math.
+  const mapRef = useRef<MapRef | null>(null);
+
+  const handlePoiSelect = (poi: Doc<"pois">) => {
+    setSelectedPoi(poi);
+
+    // Pan the map so the tapped POI sits in the upper third of the visible
+    // map area, where the drawer (which opens at Vaul's default ~80% height
+    // in M1 PR3) does not cover it. We pass `offset` in pixels: positive y
+    // is south in screen space, so a negative-y offset shifts the target
+    // northward in the viewport. Aiming for the POI to land at viewport
+    // y = 30% means it needs to display 20% of viewport-height *above*
+    // viewport center, hence offset = [0, -0.2 * height]. M1 PR4's three-
+    // snap-point drawer changes this calculus per snap level — at the peek
+    // snap (~30% covered), the natural map center is fine; the half snap
+    // (~60%) wants something closer to this PR3 offset; the full snap
+    // (~95%) means the marker is covered regardless. PR4 will need to
+    // re-derive this offset per snap state.
+    //
+    // `essential: false` is the §6.5 prefers-reduced-motion knob: when the
+    // OS reports `(prefers-reduced-motion: reduce)`, MapLibre treats this
+    // animation as non-essential and skips the transition (the camera jumps
+    // to the destination). Per AGENTS.md §6.5, motion under reduced-motion
+    // is fades-only ≤150ms; an instant pan is the closest stay-in-spec
+    // behavior MapLibre's animation system offers. The 600ms duration is
+    // longer than the §6.5 250ms sheet-transition standard on purpose: a
+    // map pan reads slow-and-cozy where a sheet swap reads snappy.
+    const map = mapRef.current;
+    if (!map) return;
+    const container = map.getContainer();
+    const offsetY = -container.clientHeight * 0.2;
+    map.panTo([poi.lng, poi.lat], {
+      duration: 600,
+      offset: [0, offsetY],
+      essential: false,
+    });
+  };
 
   return (
     // `relative h-svh w-full overflow-hidden` is the positioning context
@@ -165,6 +224,7 @@ export function LisbonMap() {
     >
       {cozyStyle ? (
         <Map
+          ref={mapRef}
           initialViewState={{
             longitude: LISBON_CENTER[0],
             latitude: LISBON_CENTER[1],
@@ -210,7 +270,70 @@ export function LisbonMap() {
             showCompass={false}
             style={{ marginTop: "var(--sai-top)", marginRight: "var(--sai-right)" }}
           />
+
+          {/*
+           * POI markers. Rendered only once the query resolves (`pois ===
+           * undefined` is the loading state — render no markers and let the
+           * map's first paint stand alone; this matches UI Designer's
+           * "markers mount after the map's first paint" hand-off note).
+           *
+           * Each marker is a `<Marker>` from react-map-gl/maplibre that
+           * positions the child `<PoiMarker>` at lat/lng and re-projects on
+           * pan/zoom. We deliberately do NOT pass `<Marker>`'s `onClick`:
+           * the inner `<PoiMarker>` is itself a button whose click handler
+           * sets `selectedPoi` (and animates the camera). Letting the
+           * inner button own the click avoids the <Marker> + <button>
+           * double-fire that would otherwise occur.
+           *
+           * The `delay` prop staggers the mount animation by 80ms per
+           * marker — small enough to feel cozy-not-slow on the modal-
+           * arrival sequence, large enough to read as a deliberate
+           * sequence rather than a unison pop. The PoiMarker's mount
+           * spring runs ~250ms; total stagger across 5 markers is
+           * 4 * 80 = 320ms, then ~250ms settle, well under the 600–900ms
+           * §6.5 cinematic budget.
+           */}
+          {pois?.map((poi, index) => (
+            <Marker
+              key={poi._id}
+              longitude={poi.lng}
+              latitude={poi.lat}
+              anchor="center"
+            >
+              <PoiMarker
+                type={poi.type}
+                label={poi.name}
+                selected={selectedPoi?._id === poi._id}
+                delay={index * 0.08}
+                onClick={() => handlePoiSelect(poi)}
+                testId={`poi-marker-${poi.slug}`}
+              />
+            </Marker>
+          ))}
         </Map>
+      ) : null}
+
+      {/*
+       * AGENTS.md §6.8 mandates a list-view alternative: "every POI is also
+       * reachable via a list view (a 'places' tab in the bottom bar).
+       * Players who can't or don't want to interact with the map are fully
+       * served." A visible "places" bottom-tab is bottom-bar work for a
+       * later PR; for M1 PR3, this `sr-only` <ul> is the minimum-viable
+       * surface that satisfies the spirit of §6.8 for screen-reader and
+       * keyboard-only users *now*. When a future PR ships the visible
+       * tab, this list either becomes the tab's content or stays as the
+       * always-on keyboard shortcut surface.
+       */}
+      {pois && pois.length > 0 ? (
+        <ul className="sr-only" aria-label="Places of interest">
+          {pois.map((poi) => (
+            <li key={poi._id}>
+              <button type="button" onClick={() => handlePoiSelect(poi)}>
+                {poi.name}
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {showPoiCount ? (
@@ -221,6 +344,28 @@ export function LisbonMap() {
           {pois.length} POIs loaded
         </div>
       ) : null}
+
+      {/*
+       * The drawer renders once at the top of the tree; Vaul portals it to
+       * <body> so visual position here is immaterial. Drives `open` off the
+       * `selectedPoi` state — flipping the state to null closes the sheet,
+       * and Vaul's overlay-tap / drag-down / ESC dismissals call
+       * onOpenChange(false) which also flips state to null. Single source
+       * of truth: `selectedPoi`.
+       *
+       * `Doc<"pois">` is a structural superset of the `Poi` type the drawer
+       * declares (slug/name/type/description/openHours), so the cast is
+       * safe at the type-system level. UI Designer's note: "If a future
+       * ADR locks the Convex doc as the canonical type, swap [Poi] to
+       * Doc<'pois'> | null then" — until that ADR exists, we narrow at
+       * the boundary.
+       */}
+      <PoiDrawer
+        poi={selectedPoi as Poi | null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPoi(null);
+        }}
+      />
     </main>
   );
 }
