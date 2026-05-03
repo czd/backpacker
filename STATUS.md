@@ -90,6 +90,7 @@ ADR-004 world-layer ceiling 400 KB gzipped.
 - `useGameClockStore` is the first Zustand store. Sibling stores (player wallet, rested-ness, journal entries) follow the same pattern. Per ADR-005 the clock is one number — same shape for M2's player slice (also normalized data, derived getters).
 - M2 save-state hydrates `epochMinute` from Convex on session resume. One field; trivial.
 - Rested-ness goes here when it lands — the Zustand structure already accepts it. AGENTS.md §5.3 specifies the mechanic.
+- **Structured availability on POIs.** M1 PR5-fixup-2 (commit `29c4095`) hardcoded `ALWAYS_OPEN_TYPES = {transit, view}` in `linger-verbs.ts` to keep the airport / miradouro coherent with their "Open 24h" prose. The right model is a structured `availability` field on the Convex POI document — open/close ranges per day, possibly per-season for places like Castelo de São Jorge that have summer/winter hours. M2's schema work introduces this; the linger-verb logic moves from type-blanket to per-POI-availability lookup. Until then, future Lisbon POIs need to think about which `ALWAYS_OPEN_TYPES` member they belong to (or not).
 
 **For M3 (NPCs + dialogue):**
 - Linger verb wording is currently placeholder ("Take it in", "Watch the planes"). Narrative Designer authors per-POI cozy verbs in M3 alongside dialogue — they're the same writerly job. Verbs should fit the city's voice (Lisbon's is the *Está-se bem* register from BUILD-LOG).
