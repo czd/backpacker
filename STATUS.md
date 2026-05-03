@@ -71,9 +71,18 @@ Per AGENTS.md §9.3, must land before the named PR merges:
 - ADR-010 (structured POI availability schema) — Accepted.
 - M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
 
-### Next: dispatch PR1
+### Next: dispatch PR2
 
-Ready to dispatch the M2 PR1 chore: `size-limit` enforcement to pin the bundle measurement methodology before mini-game work adds bytes. Per ADR-004's CI enforcement clause; per the M1 GD review's M2 prep order.
+PR1 landed (commit `be0bae1`):
+- `size-limit` configured in `.size-limit.cjs` with two route entries (`/` 300 KB, `/lisbon` 400 KB) plus commented placeholders for `/journal/*` (M4) and `/lisbon/jobs/*` (M2 PR7+).
+- Methodology pinned: glob-based against `.next/static/chunks/`, using webpack's filename convention (`name-<hash>.js` static, `name.<hash>.js` lazy) to exclude lazy chunks like the 266 KB MapLibre async chunk. Documented inline in the config file.
+- Cross-check vs Next's own per-route HTML script sums: −0.07% / −0.08% delta. Methodology is canonical.
+- Current measurements: `/` = 193 KB (64% of 300 KB ceiling); `/lisbon` = 191 KB (48% of 400 KB ceiling). Substantial headroom for M2 player-state + HUD + mini-game work.
+- New CI workflow at `.github/workflows/size-limit.yml` runs on PR + push to main; failures block merge per ADR-004.
+- The historical PR3 (218 KB) vs PR5-fixup-2 (270 KB) drift is resolved — both were measuring different things; the pinned methodology produces ~191 KB. Future PRs report against the same number.
+- **Turbopack-migration flag** captured inline: the methodology depends on webpack's chunk filename convention. If/when Next.js 16's `next-pwa`-replacement supports Turbopack and we drop `--webpack`, the size-limit methodology needs a revisit.
+
+PR2 (player-state Zustand slice) is next per the queued M2 PR order. Ready to dispatch.
 
 ---
 

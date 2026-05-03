@@ -12,6 +12,26 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M2 PR1 — `size-limit` per-route bundle enforcement (CI chore)
+
+### Shipped
+The bundle measurement methodology is pinned. `size-limit` runs on every PR and push to main, enforcing per-route ceilings from ADR-004 (300 KB splash, 400 KB world layer, with placeholders for the M4 journal and M2 mini-game routes). Configuration in `.size-limit.cjs` with extensive inline documentation; CI workflow at `.github/workflows/size-limit.yml`. Current state: `/` at 193 KB (64% of ceiling), `/lisbon` at 191 KB (48% of ceiling). Regression dry-run verified the gate fires.
+
+### Highlights from review
+
+- **The webpack filename convention is the discriminator.** Webpack emits static chunks as `name-<hash>.js` (dash-separator) and lazy/async chunks as `name.<hash>.js` (period-separator). Matching `*-*.js` cleanly excludes the lazy chunks — exactly what "First Load JS" means by definition. The historical methodology drift (PR3 ~218 KB vs PR5-fixup-2 ~270 KB on the same route) was the difference between including or excluding the MapLibre lazy chunk; with the dash-period convention, that ambiguity is gone. **Lesson:** when measurement keeps drifting, look for the load-bearing convention the build tool already uses — half the time the answer is hiding in a filename.
+- **Glob-based size-limit (Option A) was good enough.** The brief offered three options (glob / build-manifest-parsing / bundle-analyzer-hybrid) and recommended A with a 5% tolerance budget. Cross-check vs Next.js's own HTML-emitted script tags showed −0.07% to −0.08% delta — well inside tolerance. Custom build-manifest parsing (Option B) was avoided; the simpler tool produces canonical numbers.
+- **Headroom is substantial.** `/lisbon` is at 48% of its 400 KB ceiling; the M2 player-state slice (~1–2 KB) plus the HUD top bar plus the eventual mini-game route all fit within budget without strain. The brief's "minimum viable beauty" pillar didn't have to be sacrificed for "performance budget" — the dynamic-import + LCP placeholder work in M1 PR5-fixup-2 paid this dividend forward.
+- **The PR is the methodology document.** The `.size-limit.cjs` file's header comment block is the load-bearing artifact — it explains the dash-vs-period convention, the over-count tolerance, the placeholder slots, the Turbopack-migration caveat. Future agents reading the config don't have to re-derive any of this. Comments-as-canonical-source matters when the decision-rationale is more important than the configuration values.
+
+### Surprises
+
+- **The PR3 218 KB vs PR5-fixup-2 270 KB reconciliation lands cleanly.** Both numbers are real; both are wrong-by-one-thing. The 218 KB excluded lazy chunks but measured a less-trimmed module graph (PR3 didn't have framer-motion or several POI/drawer/avatar components yet). The 270 KB included the lazy MapLibre chunk because the FD's measurement script summed everything in `.next/static/chunks/`. The pinned methodology produces ~191 KB which is *less* than either historical reading because (a) PR3 didn't have the bde8e34 + 2a6e5f1 perf squeezes that the FD applied between PR3 and PR5-fixup-2, and (b) PR5-fixup-2's number was inflated by the lazy chunk. Same code, three different numbers, all defensible if you state your assumptions — but only one of them tracks the user-experience-relevant signal "what does the browser download before showing the page."
+- **Turbopack migration is now a documented future risk.** The methodology depends on webpack's filename convention. Next.js 16 defaults to Turbopack but `next-pwa` requires `--webpack`. Whenever `next-pwa` (or its successor `@ducanh2912/next-pwa` / `@serwist/next`) supports Turbopack and we drop the `--webpack` flag, the size-limit globs need verification against Turbopack's chunk filename convention. The flag is captured inline in `.size-limit.cjs` so the future PR doing the Turbopack migration can't miss it.
+- **The hobby-pace decision to skip the size-limit GitHub Action with PR comments held up.** A workflow that fails on regression is enough signal for self-review. Comment-on-PR commentary is M5 polish.
+
+---
+
 ## 2026-05-03 — M2 brainstorm + four ADRs Accepted
 
 ### Shipped
