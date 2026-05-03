@@ -60,5 +60,13 @@ lhci-results/
 /public/workbox-*.js
 /public/workbox-*.js.map
 
-# Convex generated bindings (regenerated on every `bunx convex dev`)
-/convex/_generated/
+# Convex generated bindings — committed per canonical Convex guidance
+# (skills/convex-quickstart explicitly says "check this into git").
+# Earlier this was gitignored on a wrong reading of Convex docs; that
+# choice broke Vercel deploys (the build can't resolve the api import
+# without the generated files in the repo). Now committed.
+#
+# The ai-files subdirectory is local IDE/agent guidance only — Convex's
+# `npx convex ai-files install` writes it for tools to read locally.
+# Doesn't belong in the deployed build; gitignore just that subdir.
+/convex/_generated/ai/
