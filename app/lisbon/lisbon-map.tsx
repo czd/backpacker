@@ -51,33 +51,32 @@ import { TimeOfDayClock } from "./time-of-day-clock";
 // is used only when phase is null (vanishingly rare given the store
 // has a non-null default of 870, but kept for SSR-safety).
 //
-// **dawn / dusk fallback:** UI Designer's next slice authors
-// `cozy-dawn.json` and `cozy-dusk.json`. Until then this hook falls
-// back: dawn → cozy-day.json, dusk → cozy-night.json. The runtime
-// shape is correct today; only the palette tables are pending.
+// **All four phase JSONs ship.** Per ADR-006 + M1 PR5 second slice
+// (UI Designer): dawn = pre-sunrise softness (silvery water, gentle
+// hillshade); dusk = post-sunset afterglow (sodium-warm roads, dramatic
+// shadows). All four palettes share the warm-paper / aged-azulejo hue
+// family; dawn/dusk are transitions, not different worlds.
+const STYLE_URL_DAWN = "/map-styles/cozy-dawn.json";
 const STYLE_URL_DAY = "/map-styles/cozy-day.json";
+const STYLE_URL_DUSK = "/map-styles/cozy-dusk.json";
 const STYLE_URL_NIGHT = "/map-styles/cozy-night.json";
 const KEY_PLACEHOLDER = "__MAPTILER_KEY__";
 
 /**
- * Resolve the style URL for a given in-game phase. Per ADR-006 + the
- * M1 PR5 brief: dawn/dusk JSONs don't exist yet (UI Designer's slice),
- * so we fall back: dawn → day, dusk → night. When UI Designer ships
- * dawn/dusk, swap these to dedicated URLs and the hook + setStyle
- * effect pick up the new palettes with no other changes.
+ * Resolve the style URL for a given in-game phase. Per ADR-006: each
+ * phase has its own JSON with a hand-tuned palette (see
+ * `scripts/generate-map-styles.ts` DAWN / DAY / DUSK / NIGHT tables).
+ * Phase boundary crossings trigger `map.setStyle({ diff: true })` so
+ * the swap re-uses tile + glyph caches.
  */
 function styleUrlForPhase(phase: Phase): string {
   switch (phase) {
     case "dawn":
-      // Dawn fallback → day. UI Designer slice replaces with
-      // "/map-styles/cozy-dawn.json".
-      return STYLE_URL_DAY;
+      return STYLE_URL_DAWN;
     case "day":
       return STYLE_URL_DAY;
     case "dusk":
-      // Dusk fallback → night. UI Designer slice replaces with
-      // "/map-styles/cozy-dusk.json".
-      return STYLE_URL_NIGHT;
+      return STYLE_URL_DUSK;
     case "night":
       return STYLE_URL_NIGHT;
   }

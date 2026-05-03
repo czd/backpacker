@@ -8,12 +8,11 @@
  * documents to `public/map-styles/`.
  *
  * **M1 PR5 (per ADR-006):** the file pair was renamed from
- * `cozy-{light,dark}.json` to `cozy-{day,night}.json`. The intent is to
- * extend to four files (`dawn`, `day`, `dusk`, `night`) so the day/night
- * palette can transition across in-game phase boundaries via
- * `map.setStyle({ diff: true })`. UI Designer's next slice authors the
- * dawn/dusk palette tables and re-runs this generator. Until then the
- * runtime falls back: dawn → day, dusk → night.
+ * `cozy-{light,dark}.json` to `cozy-{day,night}.json`, then extended to
+ * four files (`dawn`, `day`, `dusk`, `night`) so the day/night palette
+ * transitions across in-game phase boundaries via
+ * `map.setStyle({ diff: true })`. Each phase has its own `Palette`
+ * table below; `main()` iterates over all four.
  *
  * The committed JSON files are the source of truth at runtime — this
  * script is only re-run when MapTiler updates the upstream schema or we
@@ -22,10 +21,10 @@
  * upstream produces a byte-identical file.
  *
  * Outputs (committed; regenerate via `bun run map-styles:generate`):
+ *   - public/map-styles/cozy-dawn.json
  *   - public/map-styles/cozy-day.json
+ *   - public/map-styles/cozy-dusk.json
  *   - public/map-styles/cozy-night.json
- *   (- public/map-styles/cozy-dawn.json — UI Designer's next slice)
- *   (- public/map-styles/cozy-dusk.json — UI Designer's next slice)
  *
  * The runtime (`app/lisbon/lisbon-map.tsx`) fetches one of these JSON
  * files based on `phaseOf(epochMinute)` and injects the MapTiler API
@@ -196,6 +195,201 @@ const DAY: Palette = {
   hillshadeShadow: "hsla(28, 18%, 30%, 0.65)",
   hillshadeHighlight: "hsla(40, 35%, 92%, 0.55)",
   hillshadeAccent: "hsla(35, 22%, 78%, 0.4)",
+};
+
+// ---- DAWN (pre-sunrise softness) ------------------------------------------
+//
+// Phase: 05:00–07:00. The world before the sun crests — Bairro Alto's
+// rooftops still cool, the Tagus silvery, a coffee on a balcony at 6am.
+// Stays in the warm-paper / aged-azulejo hue family (no new hues vs.
+// day/night per ADR-006); just a *softer*, slightly lavender-warmed read.
+// Land carries a hint of peach undertone (warmer than day's pure paper).
+// Water is silvery — same hue as day's water but lower chroma. Hillshade
+// is gentler than day (the sun isn't fully up; shadows are diffuse and
+// short). Labels are a soft warm-grey, cooler than day's full-ink.
+
+const DAWN: Palette = {
+  // Land — warm paper with a peach undertone (hue 32 vs. day's 40),
+  // slightly lifted in lightness. The mood: paper warmed by a window's
+  // first light. WCAG AA: foreground hsl(28,28%,28%) on this gives 8.0:1.
+  background: "hsl(32, 46%, 92%)",
+
+  // Water — silvery, lower chroma than day's water. The Tagus before
+  // sunrise reads mercury-pale, not teal-pale. Same hue family (204) so
+  // the water still feels "this water" across phases.
+  water: "hsl(208, 14%, 78%)",
+  waterIntermittent: "hsl(208, 12%, 82%)",
+
+  // Greens — cooler-than-day sage; foliage hasn't picked up the sun yet.
+  park: "hsl(95, 16%, 78%)",
+  forest: "hsl(105, 14%, 76%)",
+  wood: "hsl(105, 14%, 80%)",
+  grass: "hsl(95, 14%, 84%)",
+  meadow: "hsl(85, 16%, 84%)",
+  scrub: "hsl(95, 14%, 80%)",
+
+  // Pale / dry — peach-tinted parchment.
+  sand: "hsl(36, 38%, 88%)",
+  crop: "hsl(36, 32%, 88%)",
+  cemetery: "hsl(95, 12%, 86%)",
+
+  // Built area — warmer-paper tints, picking up the dawn's first warmth
+  // on the residential zones.
+  residential: "hsl(32, 26%, 91%)",
+  industrial: "hsl(30, 20%, 89%)",
+  hospital: "hsl(40, 28%, 90%)",
+  school: "hsl(38, 28%, 90%)",
+  stadium: "hsl(95, 14%, 84%)",
+  pedestrian: "hsl(32, 32%, 92%)",
+  bridge: "hsl(32, 26%, 90%)",
+  bridgeOutline: "hsl(30, 16%, 80%)",
+  pier: "hsl(32, 28%, 90%)",
+
+  // Buildings — barely-tinted vs. background; same "do not overpower the
+  // topography" ethos as day. Outline a touch cooler so the dawn read
+  // isn't aggressively warm.
+  buildingFill: "hsl(30, 20%, 88%)",
+  buildingOutline: "hsl(28, 12%, 78%)",
+  buildingExtrusion: "hsl(30, 20%, 86%)",
+
+  // Roads — barely-warm, almost identical to day but a touch cooler.
+  // Streetlamps are off; the warmth comes from the paper, not the lights.
+  highway: "hsl(34, 32%, 88%)",
+  majorRoadInner: "hsl(34, 28%, 90%)",
+  minorRoadInner: "hsl(34, 22%, 93%)",
+  pathInner: "hsl(30, 12%, 70%)",
+
+  highwayOutline: "hsl(28, 18%, 72%)",
+  majorRoadOutline: "hsl(30, 14%, 74%)",
+  minorRoadOutline: "hsl(30, 8%, 80%)",
+
+  tunnelFill: "hsl(32, 24%, 92%)",
+  tunnelOutline: "hsl(28, 12%, 78%)",
+  rail: "hsl(30, 10%, 70%)",
+  aeroway: "hsl(32, 26%, 92%)",
+
+  countryBorder: "hsl(30, 12%, 60%)",
+  otherBorder: "hsl(30, 8%, 70%)",
+
+  // Labels — soft warm-grey on dawn-paper. Cooler than day's full ink so
+  // the world still reads "not yet awake." WCAG AA verified:
+  // labelText hsl(28,28%,28%) on background hsl(32,46%,92%) ≈ 7.51:1
+  // labelMutedText hsl(28,18%,40%) on background ≈ 4.72:1 (exceeds 4.5:1)
+  labelText: "hsl(28, 28%, 28%)",
+  labelHalo: "hsl(32, 46%, 94%)",
+  labelMutedText: "hsl(28, 18%, 40%)",
+
+  // Hillshade — gentler than day (sun isn't fully up); shadows are
+  // shorter and slightly cooler. Lower alpha on shadow than day means
+  // the hills still register but the relief reads as morning haze
+  // rather than clear-blue-sky topo.
+  hillshadeShadow: "hsla(28, 14%, 32%, 0.5)",
+  hillshadeHighlight: "hsla(36, 30%, 92%, 0.6)",
+  hillshadeAccent: "hsla(32, 18%, 78%, 0.3)",
+};
+
+// ---- DUSK (afterglow over the Tagus) --------------------------------------
+//
+// Phase: 18:00–20:00. The sun has dropped over the river (Lisbon faces
+// roughly south/southwest at the river — Geographer's PR1 flag); the sky
+// has the warm afterglow Lisboetas drink Sagres to. The kiosk at Santa
+// Catarina just turned its lights on; the 25 de Abril bridge is starting
+// to read sodium-warm. The mood: post-sunset, pre-night.
+//
+// Hue family stays warm-paper (no new hues per ADR-006), but the paper
+// is darker and warmer than day — an aged amber-paper tone — and the
+// water picks up the sunset reflection (warm-pink lean, but muted).
+// Hillshade is dramatic (long, warm shadows from the low sun angle).
+// Labels are slightly muted; the world is going to sleep.
+
+const DUSK: Palette = {
+  // Land — amber-paper, darker than day, warmer than night. Hue 28 (vs.
+  // day's 40) is slightly more amber-leaning; lightness 80% sits between
+  // day's 93% and night's 14%. WCAG AA: foreground hsl(28,40%,18%)
+  // on this gives 7.4:1.
+  background: "hsl(28, 32%, 80%)",
+
+  // Water — warm reflection: silvery-pink with the sunset over the
+  // Tagus. Slight orange-pink lean (hue 18, between water-blue and
+  // sunset-warm) but muted (low chroma) so it doesn't read garish.
+  // Reads as "the river is catching the sky" rather than "the river is
+  // pink."
+  water: "hsl(18, 22%, 64%)",
+  waterIntermittent: "hsl(18, 18%, 68%)",
+
+  // Greens — dust-of-evening; still recognizably green but warmer-toned
+  // (hue shifted toward yellow-green vs. day's neutral sage).
+  park: "hsl(70, 18%, 64%)",
+  forest: "hsl(80, 16%, 62%)",
+  wood: "hsl(80, 16%, 66%)",
+  grass: "hsl(75, 16%, 70%)",
+  meadow: "hsl(65, 20%, 70%)",
+  scrub: "hsl(70, 16%, 66%)",
+
+  // Pale / dry — warmed parchment, deeper than day.
+  sand: "hsl(34, 36%, 76%)",
+  crop: "hsl(34, 30%, 74%)",
+  cemetery: "hsl(70, 12%, 72%)",
+
+  // Built area — warmer-than-day tints; the residential zones pick up
+  // the ambient sunset light. Slightly deeper amber than dawn's warmth
+  // (the day has actually happened; the buildings are sun-warmed).
+  residential: "hsl(28, 28%, 78%)",
+  industrial: "hsl(26, 22%, 75%)",
+  hospital: "hsl(36, 28%, 78%)",
+  school: "hsl(34, 28%, 78%)",
+  stadium: "hsl(70, 16%, 70%)",
+  pedestrian: "hsl(28, 32%, 80%)",
+  bridge: "hsl(28, 28%, 76%)",
+  bridgeOutline: "hsl(26, 18%, 64%)",
+  pier: "hsl(28, 30%, 76%)",
+
+  // Buildings — slightly warmer-than-day fill, picking up the ambient
+  // light. Outline a touch cooler so the building footprints don't
+  // become the focus. Same "topography wins" ethos.
+  buildingFill: "hsl(26, 22%, 75%)",
+  buildingOutline: "hsl(24, 14%, 60%)",
+  buildingExtrusion: "hsl(26, 22%, 73%)",
+
+  // Roads — sodium-warm tint suggests streetlamps just turning on.
+  // Major roads slightly more lit (closer to amber); minor roads barely
+  // warmer than the paper. Path stays neutral.
+  highway: "hsl(34, 36%, 74%)",
+  majorRoadInner: "hsl(32, 32%, 76%)",
+  minorRoadInner: "hsl(30, 22%, 80%)",
+  pathInner: "hsl(28, 14%, 56%)",
+
+  // Casings — warm grey-brown, slightly darker than day's so the road
+  // hierarchy still reads against the deeper-paper background.
+  highwayOutline: "hsl(26, 18%, 56%)",
+  majorRoadOutline: "hsl(28, 14%, 60%)",
+  minorRoadOutline: "hsl(28, 8%, 66%)",
+
+  tunnelFill: "hsl(28, 26%, 78%)",
+  tunnelOutline: "hsl(26, 14%, 62%)",
+  rail: "hsl(28, 10%, 56%)",
+  aeroway: "hsl(28, 28%, 80%)",
+
+  countryBorder: "hsl(28, 12%, 48%)",
+  otherBorder: "hsl(28, 10%, 56%)",
+
+  // Labels — slightly muted on dusk-paper; the world is going to sleep.
+  // WCAG AA verified:
+  // labelText hsl(28,40%,18%) on background hsl(28,32%,80%) ≈ 7.4:1
+  // labelMutedText hsl(28,22%,32%) on background ≈ 4.7:1
+  labelText: "hsl(28, 40%, 18%)",
+  labelHalo: "hsl(28, 32%, 84%)",
+  labelMutedText: "hsl(28, 22%, 32%)",
+
+  // Hillshade — dramatic. The low sun angle (315° illumination, set
+  // globally on the layer) casts long warm shadows. Higher shadow
+  // alpha (0.6) than day (0.65 was already the high baseline) and a
+  // distinctly warm shadow color (hue 28 vs. day's 28 too — but
+  // lifted in chroma) so the shadows read sun-warmed-amber rather
+  // than neutral-grey.
+  hillshadeShadow: "hsla(28, 22%, 28%, 0.55)",
+  hillshadeHighlight: "hsla(34, 32%, 86%, 0.5)",
+  hillshadeAccent: "hsla(28, 22%, 70%, 0.4)",
 };
 
 // ---- NIGHT (cocoa & cream) ------------------------------------------------
@@ -1002,17 +1196,21 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
 
   // hillshadeStrength is a multiplier on the per-zoom exaggeration curve.
-  // 1.0 matches the upstream outdoor-v2 hillshade; we keep it at 1.0 for
-  // day and slightly higher for night (the cocoa background eats some
-  // shadow contrast). Tune by feel on a real device.
+  // 1.0 matches the upstream outdoor-v2 hillshade; we tune per phase:
+  //   - dawn  0.85 — sun isn't fully up; the relief reads as morning haze
+  //   - day   1.0  — full sun, full topography
+  //   - dusk  1.15 — low sun angle = long, dramatic shadows
+  //   - night 1.1  — cocoa background eats shadow contrast; lift slightly
   //
-  // Per ADR-006: this slice (M1 PR5) ships only `day` and `night`. UI
-  // Designer's next slice extends the table to four phases by adding
-  // dawn/dusk palette entries. Until they author dawn/dusk, the runtime
-  // falls back: dawn → day, dusk → night (see `useCozyStyle` in
-  // `app/lisbon/lisbon-map.tsx`).
+  // Per ADR-006: all four phases now ship as their own JSON. The
+  // `useCozyStyle` hook in `app/lisbon/lisbon-map.tsx` selects the
+  // matching file via `phaseOf(epochMinute)`; phase boundary crossings
+  // trigger `map.setStyle({ diff: true })` so tile + glyph caches
+  // re-use across phase swaps.
   for (const [variant, palette, hillshadeStrength] of [
+    ["dawn", DAWN, 0.85],
     ["day", DAY, 1.0],
+    ["dusk", DUSK, 1.15],
     ["night", NIGHT, 1.1],
   ] as const) {
     const styled = buildStyle(upstream, palette, variant, hillshadeStrength);
