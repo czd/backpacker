@@ -12,6 +12,27 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR3 — POI markers + placeholder drawer
+
+### Shipped
+5 type-distinct cozy markers render at lat/lng on the Lisbon map; tap opens a placeholder drawer (Vaul, no snap points yet) with the cultural-reviewed POI description, type pill, openHours. Map pans the marker into view above where the drawer opens. `sr-only` POI list satisfies §6.8 for screen-reader users (visible "places" tab is future work). 20/20 e2e tests passing.
+
+### Highlights from review
+
+- **Coherent family, distinct identity.** UI Designer kept all 5 markers structurally identical (48×48 cozy pill, same drop-shadow, same animations) and carried the type signal through a 2px inset accent ring + lucide icon, both colored from the existing `--chart-1..--chart-5` palette tokens. The chart tokens were already defined in `globals.css` for unrelated future use; reusing them here means light/dark mode auto-swap with zero new tokens. A 6th POI type (M2+) needs either a 6th chart token or a hue-shift derivation.
+- **Per-type icon picks documented in component header.** BedDouble (hostel), Plane (transit, since Lisbon's transit POI is the airport), Camera (view — also threads to M4's Journal photo page), Castle (sight, since the Castelo is our only sight at M1), ShoppingBasket (market). When non-airport transit or non-castle sights ship in M2+, those icons may need to generalize to `Train`/`Bus` and `Landmark`.
+- **panTo-on-tap so the marker doesn't hide behind the drawer.** Frontend Developer used MapLibre's native `AnimationOptions.offset` to pan the tapped POI to viewport y=30%, well above where the Vaul drawer opens at default height. `essential: false` honors `prefers-reduced-motion` per §6.5 — under reduced-motion MapLibre skips the transition and jump-pans, the closest spec-compliant behavior MapLibre offers.
+- **`sr-only` places list discharges §6.8 list-view contract for AT users *now*.** A visible "places" bottom-tab is M1+ future work, but the screen-reader path is real today. Buttons in the hidden list activate the same `setSelectedPoi` handler as the visible markers — single source of truth.
+
+### Surprises
+
+- **Framer Motion was not pre-existing in the shared chunk.** PR2's notes assumed it was already paid for ("a few KB"). M1 PR3 is the first consumer at ~67 KB gzipped. Updated headroom math: post-PR3 `/lisbon` ≈ 218 KB First Load JS (well under ADR-004's 400 KB ceiling, ~132 KB headroom for PR4 + PR5).
+- **Bundle measurement methodology drifted between PR2 and PR3.** PR2's BUILD-LOG entry recorded `/lisbon` at ~303 KB; FD's PR3 measurement of the same commit reports 152 KB. The discrepancy is whether the MapLibre async chunk (266 KB gz, loaded post-first-paint via webpack's chunk loader, not via a `<script>` tag in initial HTML) counts toward "First Load JS." Both numbers are defensible. The `size-limit` chore PR (queued behind Vercel connect) needs to pin one methodology before this drifts further.
+- **`<Marker>`'s own onClick is intentionally not used; the inner button owns the click.** Means the marker's chrome (the pill ring + drop-shadow halo) is non-interactive — only the button itself is. Defensible; flagged for PR4 to revisit if a fatter hit-target is wanted.
+- **Owner raised a real city-entry design question mid-PR3.** Should landing in Lisbon default to a top-down map, or to a welcome / home-base screen with curated actions (one of which expands the map)? The brief's M4 vintage-postcard cinematic dismisses *somewhere*; that somewhere is the question. Captured in AGENTS.md §15 for Game Designer review at M4 kickoff. None of M1 PR1–PR3 is invalidated by either resolution — at worst, M4's bounded refactor moves `/lisbon` to `/lisbon/map` and the welcome screen takes `/lisbon`. Worth flagging that the sooner this is decided, the less M2 mini-game work cements the map-as-home assumption.
+
+---
+
 ## 2026-05-03 — M1 PR2 — Map foundation (route + cozy style + gestures)
 
 ### Shipped

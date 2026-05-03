@@ -4,6 +4,64 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M1 PR3 (POI markers + placeholder drawer)
+
+### Active milestone
+**M1** — branch `feat/m1-lisbon-map`. PR1, PR2, PR3 all done. PR4 (drawer with three snap points + avatar fast-travel) up next.
+
+### Done this session (M1 PR3)
+- `<PoiMarker>` (`2d2d6a1`): 48×48 cozy pill, type-distinct chart-N hue ring + lucide icon (BedDouble/hostel · Plane/transit · Camera/view · Castle/sight · ShoppingBasket/market), framer-motion mount + selected-state spring, hover only on `(hover: hover)`. WCAG AA verified across all 5 types in both light + dark map.
+- `<PoiDrawer>` (`2d2d6a1`): wraps shadcn Drawer (Vaul), Fraunces title + type pill matching marker icon, Inter description with line-length cap, muted Clock + openHours. `pb-safe`. Drag-down-to-close. **No three-snap-points yet — that's PR4.**
+- Map wiring (`f65f31b`): 5 markers from query render at lat/lng with staggered cozy fade-in, `selectedPoi` state in `LisbonMap`, marker `onClick` → drawer opens, `panTo` offset so marker sits at viewport y=30% (above where drawer opens), `prefers-reduced-motion` respected via MapLibre's `essential: false`. `sr-only` POI list satisfies §6.8 list-view contract for screen readers (visible "places" tab is future work).
+- e2e: 5 markers @ 44×44 floor + tap-opens-drawer-with-name + Escape-closes-deselects (5 new tests, 20/20 passing).
+- ADR-004 accepted (`f10a36a`): JS budget tiered per route class. AGENTS.md §6.7 references the ADR.
+
+### New design question surfaced (captured in AGENTS.md §15)
+
+**City entry experience.** Owner raised: should landing in a city default to a top-down map, or to a welcome / home-base screen with curated actions where the map is one option (perhaps a gradient corner that expands)? The brief's M4 vintage-postcard cinematic dismisses *somewhere* — that somewhere is the question. Surfaced in §15 as an open question; decide with Game Designer at M4 kickoff. **If adopted, M1's `/lisbon` becomes a sub-route (`/lisbon/map`) and the welcome screen takes `/lisbon`** — bounded refactor, no PR3 work invalidated.
+
+### Bundle situation
+
+ADR-004 world-layer route ceiling: 400 KB gzipped. Frontend Developer's PR3 measurement of `/lisbon` First Load JS: **218 KB gz** post-PR3 (132 KB headroom for PR4 + PR5).
+
+**Methodology drift flag:** BUILD-LOG's M1 PR2 entry recorded `/lisbon` at ~303 KB; FD's PR3 measurement of the same commit reports 152 KB. Discrepancy almost certainly because the prior measurement summed MapLibre's async chunk (266 KB gz, loaded after first paint), and the current measurement counts only what the rendered HTML loads as `<script>`. Both numbers are defensible depending on what you mean by "First Load JS." The `size-limit` chore PR (queued, see below) needs to pin a single methodology so this stops drifting.
+
+### Blocked on owner
+
+**Open design question:**
+- **City entry experience** — captured in AGENTS.md §15. No action needed *now*; surfaces at M4 kickoff. If you want to brainstorm with the Game Designer earlier (e.g. before M2 mini-game work cements the map-as-home assumption), say so and I'll dispatch.
+
+**MapTiler dashboard:**
+- Tailscale + future Vercel hostnames in API-key allowed-origins. Owner reports the Tailscale fix is done; verify Vercel hostnames go in when Vercel is connected.
+
+**Chore PR (queued, not gating any milestone):**
+- Wire `size-limit` per ADR-004's CI enforcement clause. Pins a single bundle measurement methodology and asserts each route class against its ceiling. Lands as `chore(ci): size-limit per ADR-004` after Vercel is connected.
+
+**Owner manual gates from M0 still pending:**
+- Vercel connect + `NEXT_PUBLIC_CONVEX_URL` env var
+- Real-phone install + portrait screen recording
+- Lighthouse mobile against deployed production URL
+- `git tag m0-done && git push --tags`
+
+### Cross-cutting flags from M1 PR3
+
+**For PR4 (drawer + avatar fast-travel):**
+- The pan-on-tap offset assumes drawer covers ~50% of viewport (Vaul default). With three snap points, offset re-derives per snap level: peek (~30% covered) → no offset; half (~60%) → current `[0, -0.2*h]`; full (~95%) → marker fully obscured, accept it. Plumb through Vaul's snap-change callback.
+- `<Marker>`'s own onClick is intentionally not used; the inner button owns the click. PR4 should consider whether tapping marker chrome should also open drawer or whether button-only is correct.
+- Avatar marker is another `<Marker>` child of `<Map>`. Dotted-line fast-travel = `<Source>`/`<Layer>` pair (line layer with `line-dasharray`) animated via `setPaintProperty`. `mapRef` already exists — reuse.
+- Per Geographer flag from PR1 review: travel-cost factor should include elevation, not pure straight-line distance (Castelo's 90m gain makes the 900m line feel wrong if duration is pure-distance). Game Designer call before PR4 ships.
+
+**For PR5 (time-of-day + day/night palette):**
+- Cozy-light/dark are OS-driven via `useCozyStyle`. PR5 will need an in-game-time signal too — add a second arg to `useCozyStyle` and re-fetch on dawn/dusk crossings.
+- Style swap is destructive (full re-fetch). MapLibre's `setStyle({ diff: true })` is the smoother path; worth an ADR if PR5 wants pixel-quiet swaps.
+- Time-of-day clock will likely live in a top bar overlay. `mapRef` is currently scoped to map container; if clock animates camera, lift the ref to Zustand (matches §8 state-leads pattern).
+
+**Conventions established this PR (worth carrying forward):**
+- Marker testid pattern: `data-testid="poi-marker-<slug>"`. Stable e2e selector for the rest of M1+.
+- e2e timing for realtime queries: `await expect(markers).toHaveCount(5)` as the gate before any marker click. Convex websocket can settle after the dev poi-count affordance renders under parallel-test load.
+
+---
+
 ## 2026-05-03 — M1 PR2 (Map foundation)
 
 ### Active milestone
