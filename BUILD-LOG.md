@@ -12,6 +12,32 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR5 fixup rounds — Real-phone tuning to ship-feel
+
+### Shipped
+Two rounds of real-phone iteration on top of PR5's initial ship — six findings total, all fixed. The clock now ticks visibly during travel and linger. The colon and digits sit on the same baseline because the absolute-positioning slide animation that fought it is gone (deferred to M5 Whimsy with a proper baseline-aware mechanic). `openHours` prose and night-closure UI agree (24h POIs stay open). Travel rate calibrated to 4 game-min/real-sec via three iterations (3 → 3.6 → 4). Linger ticks over 1–3s real time at 15 game-min/sec with a `Loader2` spinner on the button.
+
+### Highlights from review
+
+- **The brief's "manually verify on a real phone before merge" (§12.3) is doing real work.** PR5's initial ship was technically correct — every DoD line met, all tests green — but on a real iPhone, six things were wrong: the clock didn't tick during travel, the colon was misaligned, the airport contradicted itself ("Open 24h" + "Closed at night"), travel felt slightly too slow, linger was instant, and the second-pass colon fix didn't hold. None of those would have surfaced in headless e2e or in dev-tools mobile emulation. Each was a small fix; the cumulative result is the difference between "shipped" and "feels right." The discipline isn't theater.
+
+- **The clock-not-advancing bug was the most informative.** The rAF loop committed `advance(deltaMins)` per frame at ~0.05 game-min per frame; the store rounded to int per ADR-005's "integer minutes are the natural unit" line, lost everything every frame. Two fixes in tension: (a) drop the rounding, which violates ADR-005's spirit, or (b) accumulate fractional minutes locally and commit whole minutes only when threshold crossed. Picked (b) — store stays integer-canonical, the rAF loop owns the fractional accumulator. **Lesson:** ADRs that prescribe data shape should explicitly note where the boundary between "always integer" and "can be fractional" sits. ADR-005 should have spelled out that the rAF caller is responsible for accumulating; the implementation language was ambiguous about where the rounding belonged. The fix is documented in code; ADR-005 itself isn't amended (the consequence section does describe `advance(deltaMinutes)` as a delta, which the accumulator pattern preserves).
+
+- **Slide animation was the wrong M1 polish.** `SlidingDigits` used `inline-block` containers with `position: absolute` children to slide each digit independently. Two problems: (a) absolute children don't contribute to the parent's line-box, so the box's baseline defaulted to bottom-of-box, pushing the inline colon visually below the digits; (b) even a baseline-anchor child didn't fully fix it, because the visible absolute child rendered at *its own* baseline that didn't match the anchor's. The cure was simpler than the disease: drop the slide. Plain text. Clock still ticks via React re-render. **Lesson for future Whimsy work:** per-element transform animations on inline text are a baseline-coordination problem. The proper mechanic is probably to animate via `clip-path` / `mask` (transform a clipping window over static text) rather than animating the text glyph itself. M5 Whimsy can revisit with that knowledge.
+
+- **`openHours` vs night-closure was a content-vs-logic coherence issue.** The prose was authored by Anthropologist + Historian per §9.3; the closure logic was hardcoded by phase. They didn't talk to each other. The placeholder fix (`ALWAYS_OPEN_TYPES = {transit, view}`) gets us out of the immediate bind, but the proper model is a structured `availability` field on the POI document — open/close ranges per day, possibly seasonal for the castle. M2's schema work owns that. **Lesson:** any cultural-content-driven UI rule should be data-driven from the start; deriving rules from prose is fragile.
+
+- **Linger was the last "doesn't feel right" beat.** Instant `advance(quantum)` was correct in code but wrong in feel — time should *be felt* passing. The fix is the same mechanic as travel (rAF loop, accumulator, document.hidden gate, reduced-motion jump-cut), with different rate (15 game-min/sec) and a duration cap (3s). The Loader2 spinner on the button is the local affordance — the player doesn't have to glance at the HUD to confirm the tap registered. The cap is what keeps the 480-min sleep from being a 32s wait — at the cap, the rate effectively jumps to 160 game-min/sec, which reads as a "hours flying by" montage rather than a slot machine. **The travel and linger rAF loops now share a structural pattern** that could be extracted to a reusable helper; haven't done so yet because the conditions differ slightly (travel has no end target; linger has a quantum). M2 or M5 might collapse them.
+
+### Surprises
+
+- **Three rate iterations to land the right travel speed.** 3 game-min/sec felt slow; 3.6 felt close; 4 felt right. All three numbers were defensible based on the math (real-world walking speed is ~5km/h, so 6.4km should burn ~77min — at 4 game-min/sec the airport leg burns 76min, basically real-world-accurate). The "right" number was the one that *felt* right on a phone, not the one the math chose. Game design is calibration, not derivation.
+- **`Loader2` from lucide was already in the chunk.** The spinner adds zero bundle cost. Lucide's tree-shaking + the fact that the project already imports several lucide icons means single-icon additions are effectively free.
+- **Removing SlidingDigits + AnimatePresence-on-digits *reduced* bundle.** Net negative diff after the round. Cozy and lighter is a good combination.
+- **The clock colon issue revealed how much CSS baseline is folklore.** The fix wasn't "the right CSS property" — it was "stop fighting the layout system." The same lesson PR4-fixup-2 taught with the Vaul stylesheet cascade gotcha: when you find yourself stacking `!important` modifiers and invisible-anchor children to wrestle with a third-party-or-platform-default behavior, the right move is often to step back and ask whether the abstraction is needed at all. SlidingDigits was an abstraction that fought CSS; deleting it was the cleanest "fix."
+
+---
+
 ## 2026-05-03 — M1 PR5 — Time-of-day clock + day/night palette + linger verbs (M1 complete)
 
 ### Shipped

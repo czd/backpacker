@@ -88,12 +88,12 @@ function styleUrlForPhase(phase: Phase): string {
  * = walking burns less of the day; higher = more. Marked PLACEHOLDER
  * so a future tuning pass can grep for it.
  */
-// 3.6 game-min/real-sec — owner-tuned 2026-05-03 after a second
-// real-phone session. The original 3 felt slightly too slow; +20%
-// makes the airport leg burn ~68 in-game minutes over its 19s real
-// walk (vs the prior 57), which reads as "more day passed" without
-// changing the walking speed itself.
-const GAME_MINS_PER_REAL_SEC_DURING_TRAVEL = 3.6;
+// 4 game-min/real-sec — owner-tuned 2026-05-03 after iterative
+// real-phone testing. Original 3 → 3.6 (+20%) → 4 (final M1 calibration).
+// The airport leg burns ~76 in-game minutes over its 19s real walk;
+// short Baixa hops burn 7–14 in-game min over their 1.8–3s real walks.
+// Reads as "more day passed" without changing the walking speed itself.
+const GAME_MINS_PER_REAL_SEC_DURING_TRAVEL = 4;
 
 // Linger uses a separate rate — the player is stationary watching the
 // clock advance, so the cap exists to keep big quanta from feeling like

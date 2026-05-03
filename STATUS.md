@@ -4,7 +4,72 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
-## 2026-05-03 — M1 PR5 (time-of-day clock + day/night palette + linger verbs) — **M1 COMPLETE**
+## 2026-05-03 — M1 PR5 + four fixup rounds — **M1 COMPLETE (real-phone-tuned)**
+
+### Active milestone
+**M1 done locally.** Branch `feat/m1-lisbon-map`, ~20 commits. All five PRs + four fixup rounds landed. Every M1 DoD line in §13 ships. Awaiting Game Designer milestone review before tagging `m1-done` (real-phone verification largely happened in-flight via the four fixup iterations).
+
+### Done since prior STATUS entry (PR5 fixup round 1, commit `29c4095`)
+Three real-phone-testing findings, fixed in one slice:
+
+1. **Clock didn't advance during travel.** rAF loop committed `advance(0.05)` per frame; store rounded to int per ADR-005, lost everything. Fixed via local fractional accumulator in the rAF loop — commits whole minutes only when threshold crossed, carries remainder. Store stays integer-canonical per ADR-005.
+2. **Clock colon visibly misaligned with digits.** Added invisible baseline-anchor digit inside `SlidingDigits` container — turned out to be the wrong fix.
+3. **`openHours` prose contradicted night-closure UI.** Airport says "Open 24h" + button said "Closed — come back at 09:00." Added `ALWAYS_OPEN_TYPES = {transit, view}` to `linger-verbs.ts`. Castle/market still close (their seeded prose says so). Hostel always offers Sleep.
+
+### Done this round (PR5 fixup round 2, commits `4436f6f` + this commit)
+Three more real-phone findings:
+
+1. **Clock colon STILL misaligned.** Round 1's baseline-anchor wasn't enough — `position: absolute` children don't contribute to the parent's line-box, so pure-CSS baseline coordination was fragile in this configuration. **Cleanest fix: drop the per-digit slide animation entirely.** `SlidingDigits` removed. Plain inline text. Clock still ticks visibly during travel via natural React re-renders. Slot-reel + slide return as M5 Whimsy with a baseline-aware mechanic.
+2. **Travel time too slow.** Owner bumped rate from `3` → `3.6` → `4` game-min/real-sec across two iterations. Airport leg now burns ~76 in-game minutes over its 19s real walk.
+3. **Linger felt instant.** "I hardly notice that time elapses." Replaced `advance(quantum)` with rAF loop ticking over 1–3s real time at 15 game-min/sec, capped at 3s. PoiDrawer accepts `lingering` prop; linger button shows `Loader2` spinner (`animate-spin`) and disables during the advance. Reduced-motion → instant advance, no spinner.
+
+### Resulting time mechanics for M1 (final)
+
+| Action | Real time | In-game time |
+|---|---|---|
+| Walk hostel↔castle (~0.6 km) | ~1.8s | ~7 min |
+| Walk hostel↔miradouro (~0.7 km) | ~2.1s | ~8 min |
+| Walk hostel↔mercado (~1.0 km) | ~3.0s | ~12 min |
+| Walk airport↔hostel (~6.4 km) | ~19s | ~76 min |
+| Linger "Watch the planes" (15 min) | 1.0s | 15 min |
+| Linger "Take it in" (30 min) | 2.0s | 30 min |
+| Linger "Walk the walls" (60 min) | 3.0s (cap) | 60 min |
+| Linger "Browse the stalls" (30 min) | 2.0s | 30 min |
+| Linger "Sleep until morning" (varies) | 3.0s (cap) | varies (4–10 hr) |
+
+### Bundle situation
+ADR-004 world-layer ceiling 400 KB gzipped. Trend remains flat — these were behavioral fixes + a simplification, not feature additions. The slide-animation removal (SlidingDigits + AnimatePresence on digits) actually reduces a bit of bundle. `Loader2` was already in the lucide chunk. Net delta is negligible.
+
+### Verification
+- `bun run build` passes
+- `bun run test`: **140/140 vitest** across 9 files (no test count change; existing tests covered the linger/closure logic)
+- e2e: PR5 e2e tests stayed green; no test-edit needed for round 2 (the e2e timing windows already cover the variable durations)
+
+### Blocked on owner
+
+**Game Designer milestone review** — per AGENTS.md §11, GD reviews milestones for pillar conformance. M1 is the first with real game mechanics; this review matters more than M0's. After four real-phone fixup rounds, the milestone is in a state where GD has substance to review against the cozy / mobile-native / pillar-fit checklists.
+
+**Tag `m1-done`** once GD review approves. Same shape as `m0-done` per AGENTS.md §14.2.
+
+**M0 manual gates still pending** (unchanged from prior STATUS): Vercel connect, screen recording, Lighthouse on deployed URL, `m0-done` tag.
+
+### Cross-cutting flags carried forward (unchanged + new)
+
+**For M2:** structured `availability` field on Convex POI document supersedes the hardcoded `ALWAYS_OPEN_TYPES = {transit, view}` rule (captured in earlier STATUS, still relevant). The Zustand pattern established for the game-clock store is the template for player-state slices (wallet, rested-ness, journal entries).
+
+**For M5 Whimsy Injector:**
+- Slide / slot-reel digit animation on the clock (now properly a Whimsy task — needs a baseline-aware mechanic; the SlidingDigits-with-absolute-positioning approach is documented as a dead end in the BUILD-LOG so future-Whimsy doesn't retry it).
+- Marching-ants on travel trail (carried from earlier).
+- Self-host Fraunces SDF glyphs for map labels (carried from PR2).
+- Phase tint as transition (carried from PR5).
+
+**Travel rate calibration:** locked at **4 game-min/real-sec** for M1 ship. Future tuning via the `[PLACEHOLDER]` comment grep. M2 may revisit if energy-mechanic tuning suggests different walking-vs-paid-transit gradients.
+
+**Linger rate calibration:** locked at **15 game-min/real-sec, 3s cap** for M1 ship. Same `[PLACEHOLDER]` discipline.
+
+---
+
+## 2026-05-03 — M1 PR5 (time-of-day clock + day/night palette + linger verbs) — initial ship
 
 ### Active milestone
 **M1 done locally.** Branch `feat/m1-lisbon-map`. All five PRs + two fixups landed. Every M1 DoD line in §13 ships. Awaiting owner real-phone verification + Game Designer milestone review before tagging `m1-done`.
