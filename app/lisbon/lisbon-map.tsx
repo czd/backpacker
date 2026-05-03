@@ -16,6 +16,7 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { AvatarMarker } from "./avatar-marker";
 import { phaseOf, useGameClockStore, type Phase } from "./game-clock-store";
+import { usePlayerStore } from "./player-store";
 import {
   bearingDeg,
   boundsForFit,
@@ -363,6 +364,49 @@ export function LisbonMap() {
     };
     return () => {
       delete w.__gameClock;
+    };
+  }, []);
+
+  // **Dev/test seam — player state.** Sibling to `__gameClock` above.
+  // Exposes the player-store mutators on window so M2 PR4–PR8's e2e
+  // tests can force wallet / rested-ness state without driving real
+  // mini-game loops or sleep verbs. Same NODE_ENV gate; same lifecycle.
+  // Per ADR-007 + ADR-008. M2 PR2 ships this alongside the store
+  // itself so consumer PRs (hostel sleep, HUD, mini-game, busking +
+  // transit) inherit the seam at-mount, no per-PR re-wiring.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (typeof window === "undefined") return;
+    const w = window as Window &
+      typeof globalThis & {
+        __player?: {
+          setWallet: (cents: number) => void;
+          chargeWallet: (cents: number) => void;
+          creditWallet: (cents: number) => void;
+          getWallet: () => number;
+          setRested: (value: number) => void;
+          drainRested: (amount: number) => void;
+          restoreRested: () => void;
+          getRested: () => number;
+        };
+      };
+    w.__player = {
+      setWallet: (cents: number) =>
+        usePlayerStore.getState().setWallet(cents),
+      chargeWallet: (cents: number) =>
+        usePlayerStore.getState().chargeWallet(cents),
+      creditWallet: (cents: number) =>
+        usePlayerStore.getState().creditWallet(cents),
+      getWallet: () => usePlayerStore.getState().walletEurosCentsInternal,
+      setRested: (value: number) =>
+        usePlayerStore.getState().setRested(value),
+      drainRested: (amount: number) =>
+        usePlayerStore.getState().drainRested(amount),
+      restoreRested: () => usePlayerStore.getState().restoreRested(),
+      getRested: () => usePlayerStore.getState().rested,
+    };
+    return () => {
+      delete w.__player;
     };
   }, []);
 
