@@ -48,11 +48,22 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  overlayClassName,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+}: React.ComponentProps<typeof DrawerPrimitive.Content> & {
+  /**
+   * Optional override for the backdrop overlay's className. Lets a
+   * consumer customize the dim/blur tint without forking the primitive
+   * (cozy paint, brand tint, removed-altogether etc.). Defaults to the
+   * shadcn baseline `bg-black/10 supports-backdrop-filter:backdrop-blur-xs`
+   * applied by `<DrawerOverlay>`. Consumer-supplied classes are merged
+   * after the default — Tailwind's last-wins resolves them.
+   */
+  overlayClassName?: string
+}) {
   return (
     <DrawerPortal data-slot="drawer-portal">
-      <DrawerOverlay />
+      <DrawerOverlay className={overlayClassName} />
       <DrawerPrimitive.Content
         data-slot="drawer-content"
         className={cn(

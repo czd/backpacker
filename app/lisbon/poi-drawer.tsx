@@ -134,12 +134,71 @@ export function PoiDrawer({ poi, onOpenChange }: PoiDrawerProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange} key={poi?.slug ?? "closed"}>
       <DrawerContent
-        // Cap height at ~85svh so on tall phones the sheet doesn't swallow
-        // the whole map even at "full" — keeps a sliver of map visible for
-        // orientation, which §6.3 calls out for peek/half ("the map remains
-        // visible behind the sheet"). At M1 PR3 the drawer opens at Vaul's
-        // default size (~80svh); cap is a guard for very short content.
-        className="data-[vaul-drawer-direction=bottom]:max-h-[85svh]"
+        // Cozy backdrop tint. The primitive's default is `bg-black/10` —
+        // pure black at 10% alpha, which reads cool/graphic against the
+        // warm-paper map. Override to a `--foreground`-tinted dim that
+        // sits in the warm palette family. The PR4 (Frontend Developer)
+        // slice configures Vaul's `modal` prop per-snap so this backdrop
+        // is only painted at the *full* snap; at peek/half the map stays
+        // fully readable. The class still has the supports-backdrop-filter
+        // blur as a progressive enhancement on browsers that have it.
+        overlayClassName={cn(
+          // Override the primitive default. `bg-[color-mix...]` resolves
+          // to the same alpha (~10%) as the original `bg-black/10` but
+          // tinted toward `--foreground` so the dim reads warm cocoa
+          // light / warm-charcoal dark instead of flat black.
+          "!bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]",
+        )}
+        // Cozy chrome refinements (consumer-level so other future drawers —
+        // settings, journal, NPC dialogue — can adopt their own):
+        //
+        //  - `rounded-t-3xl`: generously rounded top corners (Tailwind 1.5rem
+        //    via the cozy radius scale; see globals.css `--radius-3xl`).
+        //    Softens the panel into a "sheet of paper sliding up." The
+        //    primitive's default is `rounded-t-xl` (smaller), which read
+        //    too dialog-y on the warm-paper map.
+        //  - `border-t-0`: drop the primitive's default 1px top border.
+        //    The drop-shadow above the drawer + the rounded corners are
+        //    plenty of separation; a hairline border on top of those reads
+        //    as "panel," not "paper."
+        //  - Warm-tinted upward shadow: a soft `--foreground`-alpha glow
+        //    above the drawer's top edge. Negative y-offset puts the
+        //    shadow above the sheet (the "elevation hint" the brief asks
+        //    for). Pure-black would read cool/graphic against the warm
+        //    paper map; foreground-tinted reads cozy.
+        //  - Cap height at ~85svh so on tall phones the sheet doesn't
+        //    swallow the whole map even at "full" — keeps a sliver of
+        //    map visible for orientation, which §6.3 calls out for peek/
+        //    half ("the map remains visible behind the sheet"). At M1
+        //    PR3 the drawer opens at Vaul's default size (~80svh); cap is
+        //    a guard for very short content. PR4's three-snap-point
+        //    config supersedes this for the per-snap heights.
+        //
+        // The primitive's default drag-handle (mx-auto mt-4 h-1 w-[100px]
+        // bg-muted) is hidden via the `[&>div:first-child]:hidden` class
+        // below, and replaced with a cozy-tuned overlay handle (see
+        // children). The primitive itself stays untouched, so other
+        // consumers keep the default unless they opt in to a cozy
+        // override of their own.
+        className={cn(
+          "data-[vaul-drawer-direction=bottom]:max-h-[85svh]",
+          "data-[vaul-drawer-direction=bottom]:rounded-t-3xl",
+          "data-[vaul-drawer-direction=bottom]:border-t-0",
+          // Upward warm-tinted shadow. y=-8px, blur=24px, foreground @
+          // 14% alpha — soft, not punchy. Browsers ignore the spread
+          // for negative-y box-shadows on the top edge cleanly.
+          "data-[vaul-drawer-direction=bottom]:shadow-[0_-8px_24px_-4px_color-mix(in_oklab,var(--foreground)_14%,transparent)]",
+          // Hide the primitive's default drag handle (the first <div>
+          // child the primitive renders before {children}). We want
+          // exactly one visible handle, our cozy overlay below — the
+          // primitive's default `mx-auto mt-4 h-1 w-[100px] bg-muted`
+          // would otherwise be a second pill visible at the same edge.
+          // Targeting `>div:first-child` is precise enough that future
+          // children of `DrawerContent` (the body wrapper) are
+          // unaffected; only the primitive's auto-rendered handle div
+          // matches.
+          "[&>div:first-child]:hidden",
+        )}
         // The drawer body needs `touch-action: auto` so vertical scroll
         // works inside long descriptions. STATUS PR2 noted that <main>
         // sets touch-action: none; Vaul portals out of <main> (renders to
@@ -148,6 +207,41 @@ export function PoiDrawer({ poi, onOpenChange }: PoiDrawerProps) {
         // future ancestor changes.
         data-testid="poi-drawer-content"
       >
+        {/*
+         * Cozy drag-handle. The shadcn primitive renders its own default
+         * handle as the first child of `DrawerContent` (mx-auto mt-4 h-1
+         * w-[100px] bg-muted); we hide it via the `[&>div:first-child]:
+         * hidden` class on DrawerContent above and render a visually-tuned
+         * replacement here. The primitive itself stays untouched so other
+         * future drawers (settings, journal, NPC dialogue) keep the
+         * default unless they opt in to a cozy override of their own.
+         *
+         *  - 36px wide × 4px tall (`w-9 h-1`) — tighter than the
+         *    primitive's 100px so the handle reads as a discreet grip,
+         *    not a UI banner. The brief's spec.
+         *  - `bg-muted-foreground/40` — the muted-foreground tone at 40%
+         *    alpha. Reads warm against the cozy paper background, not
+         *    pure grey. Picks up the warm hue from `--muted-foreground`
+         *    (oklch ~ 0.46 hue 75 light / 0.72 hue 78 dark) so the
+         *    handle stays cozy in both schemes.
+         *  - `top-2.5` (10px from the sheet's top edge) leaves ~12px of
+         *    breathing room above the body content area below.
+         *  - `pointer-events-none` because Vaul's drag mechanism is bound
+         *    to the sheet's content edge, not specifically to the visual
+         *    handle pill. The visual handle is decoration over a
+         *    draggable region; suppressing pointer events on our overlay
+         *    avoids interfering with Vaul's drag detection.
+         */}
+        <div
+          aria-hidden="true"
+          data-testid="poi-drawer-handle"
+          className={cn(
+            "pointer-events-none absolute left-1/2 top-2.5 z-10",
+            "-translate-x-1/2",
+            "h-1 w-9 rounded-full",
+            "bg-muted-foreground/40",
+          )}
+        />
         {poi ? <PoiDrawerBody poi={poi} /> : null}
       </DrawerContent>
     </Drawer>
@@ -169,8 +263,10 @@ function PoiDrawerBody({ poi }: { poi: Poi }) {
         // Outer padding: 16px base unit per §6.4. `pb-safe` handles the
         // iOS home indicator so the open-hours line never sits under the
         // home bar. `px-6` (24px) reads more breathable than the default
-        // `p-4` shadcn ships with for DrawerHeader.
-        "flex flex-col gap-4 px-6 pb-6",
+        // `p-4` shadcn ships with for DrawerHeader. `pt-5` (20px) clears
+        // the cozy drag-handle (which sits at top-2.5 + h-1 = 14px from
+        // the sheet edge) with a 6px breathing margin before the title.
+        "flex flex-col gap-4 px-6 pb-6 pt-5",
         // Bottom safe area on top of the explicit pb-6 — the gesture bar
         // on Android adds variable padding too.
         "pb-safe",
@@ -187,8 +283,10 @@ function PoiDrawerBody({ poi }: { poi: Poi }) {
         className={cn(
           // Override shadcn's default centered + small-gap header in favor
           // of a left-aligned, slightly-roomier one — the bottom sheet on
-          // mobile reads as a card, not a dialog title bar.
-          "flex flex-col items-start gap-2 p-0 pt-2 text-left",
+          // mobile reads as a card, not a dialog title bar. `p-0` because
+          // the parent body wrapper now owns the top breathing room (pt-5
+          // to clear the cozy drag-handle).
+          "flex flex-col items-start gap-2 p-0 text-left",
           "md:text-left",
         )}
       >

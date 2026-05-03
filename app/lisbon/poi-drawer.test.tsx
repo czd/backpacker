@@ -75,6 +75,28 @@ describe("PoiDrawer", () => {
     }
   });
 
+  it("renders the cozy drag-handle (muted-foreground tone, ~36px wide)", () => {
+    // The handle override is the visible cue for the cozy chrome pass.
+    // Lock the contract so a refactor can't accidentally drop the cozy
+    // tint or width back to shadcn defaults.
+    render(<PoiDrawer poi={FIXTURE} onOpenChange={() => {}} />);
+    const handle = screen.getByTestId("poi-drawer-handle");
+    expect(handle).toBeInTheDocument();
+    // 36px wide via Tailwind `w-9`, 4px tall via `h-1`.
+    expect(handle.className).toMatch(/\bw-9\b/);
+    expect(handle.className).toMatch(/\bh-1\b/);
+    // Muted-foreground tone (warm) at 40% alpha — not pure grey.
+    expect(handle.className).toMatch(/bg-muted-foreground\/40/);
+  });
+
+  it("renders the drawer with rounded-t-3xl top corners (cozy paper-sheet edge)", () => {
+    render(<PoiDrawer poi={FIXTURE} onOpenChange={() => {}} />);
+    const content = screen.getByTestId("poi-drawer-content");
+    // The class is gated by the data-vaul-drawer-direction=bottom
+    // selector so the className includes the prefix in the source.
+    expect(content.className).toMatch(/rounded-t-3xl/);
+  });
+
   it("calls onOpenChange when the user dismisses (parent contract)", () => {
     // Vaul's open state is derived from the `poi` prop in our wrapper:
     // when the parent flips poi to null, the drawer closes; when the
