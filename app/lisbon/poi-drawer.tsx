@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   BedDouble,
   Camera,
@@ -24,18 +25,30 @@ import type { PoiMarkerType } from "./poi-marker";
 /**
  * PoiDrawer — the placeholder drawer content for a POI tap.
  *
- * Scope contract (this slice):
+ * Scope contract (this slice — M1 PR4 second slice):
  *   - Wraps shadcn's Drawer (which wraps Vaul) as a controlled component
- *     driven by `poi` + `onOpenChange` from the parent (Frontend Developer's
- *     next slice holds the selectedPoi state in LisbonMap).
- *   - Default Vaul behavior at M1 PR3: drag-down-to-close, default size.
- *     Three snap points (peek ~30 / half ~60 / full ~95) per AGENTS.md §6.3
- *     are M1 PR4's scope and explicitly out-of-scope here.
+ *     driven by `poi` + `onOpenChange` from the parent (LisbonMap holds the
+ *     selectedPoi state).
+ *   - **Three snap points** [0.3, 0.6, 0.95] per AGENTS.md §6.3 (peek / half
+ *     / full). Opens at half (0.6) per the §13 M1 DoD line. Vaul drives the
+ *     internal active-snap state; we expose the active snap upward via
+ *     `onSnapChange` so the parent can re-derive the map's `panTo` offset
+ *     per snap level.
+ *   - **Modality is per-snap.** Vaul's `modal` is a Root-level boolean
+ *     (no per-snap config), so we keep the Drawer non-modal (`modal=false`)
+ *     and only paint the cozy backdrop when the user has dragged to the
+ *     full snap. At peek and half, the overlay is fully transparent and
+ *     does not intercept pointer events — the map underneath remains
+ *     interactive. At full, the overlay carries the cozy `--foreground`-
+ *     tinted dim. This matches §6.3: "the map remains visible behind the
+ *     sheet at peek and half snaps" and (implicitly) interactive there.
  *   - No explicit X close button. Vaul's drag-handle (the small pill at the
  *     top of the sheet, rendered automatically by `DrawerContent`) plus the
- *     overlay-tap-to-close are the dismissal affordances. AGENTS.md §6.3
- *     ("Modal: ... Always dismissible with a downward swipe.") is satisfied
- *     by Vaul's defaults; an X button would be redundant for M1.
+ *     overlay-tap-to-close at full and the peek snap (which already shows
+ *     30% of the sheet, dragable down to fully dismiss) are the dismissal
+ *     affordances. AGENTS.md §6.3 ("Modal: ... Always dismissible with a
+ *     downward swipe.") is satisfied by Vaul's defaults; an X button would
+ *     be redundant for M1.
  *
  * Content layout (when open):
  *   - Drag-handle pill at the top (rendered by `DrawerContent` automatically).
@@ -85,6 +98,32 @@ export type Poi = {
   openHours: string;
 };
 
+/**
+ * Snap points for the bottom sheet, per AGENTS.md §6.3:
+ *   peek ~30% / half ~60% / full ~95%.
+ *
+ * Exported so the parent can compare `activeSnapPoint` numerically when
+ * deriving `panTo` offsets, rather than re-typing magic numbers. The order
+ * (least-visible → most-visible) is the order Vaul expects.
+ */
+export const SNAP_POINTS = [0.3, 0.6, 0.95] as const;
+export type SnapPoint = (typeof SNAP_POINTS)[number];
+
+/**
+ * The default snap on open. M1 DoD says "Tapping a POI opens a Drawer
+ * (bottom sheet) at the half snap." Half = 0.6.
+ */
+export const DEFAULT_SNAP: SnapPoint = 0.6;
+
+/**
+ * The fade-from-index for Vaul's overlay fade. Vaul fades the overlay in
+ * starting at `snapPoints[fadeFromIndex]`; below that snap the overlay's
+ * opacity is 0. We point this at the *full* snap (index 2) so the overlay
+ * only paints at full and is fully transparent at peek/half — exactly the
+ * §6.3 contract.
+ */
+const FADE_FROM_FULL_INDEX = 2;
+
 export type PoiDrawerProps = {
   /**
    * The currently-displayed POI, or null when the drawer is closed.
@@ -101,6 +140,18 @@ export type PoiDrawerProps = {
    * taps the overlay, or presses ESC.
    */
   onOpenChange: (open: boolean) => void;
+  /**
+   * Fires whenever the active snap point changes (open at default snap,
+   * user drags to a new snap, user dismisses → null on close). The parent
+   * uses this to re-pan the map so the marker stays in the visible part of
+   * the viewport at peek/half snaps.
+   *
+   * The value is one of `SNAP_POINTS` while the drawer is open, or null
+   * when closed. We forward Vaul's exact value (Vaul accepts numbers and
+   * strings; we always feed it numbers from `SNAP_POINTS`, so the parent
+   * can rely on a `number | null` shape).
+   */
+  onSnapChange?: (snap: number | null) => void;
 };
 
 type TypePillMeta = {
@@ -121,8 +172,56 @@ const TYPE_PILL_META: Record<PoiMarkerType, TypePillMeta> = {
   market: { icon: ShoppingBasket, label: "Market" },
 };
 
-export function PoiDrawer({ poi, onOpenChange }: PoiDrawerProps) {
+export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
   const open = poi !== null;
+
+  // Vaul's snap-point state. `null` is the closed state; on open, Vaul
+  // initializes to `DEFAULT_SNAP` (half) per the M1 DoD contract. We hold
+  // the snap in component state so the parent can subscribe via the
+  // `onSnapChange` prop without owning Vaul's internal driver.
+  //
+  // The state intentionally lives here, not in the parent: keeping snap-
+  // tracking encapsulated means the parent only sees the "what snap is
+  // active" signal it needs (for re-deriving panTo offsets), not the
+  // controlled-component machinery for Vaul. If a future PR needs the
+  // parent to *force* a snap programmatically (e.g. NPC dialogue forcing
+  // full snap), we can promote this to a controlled prop then.
+  const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(
+    DEFAULT_SNAP,
+  );
+
+  // Forward to parent. We coerce to `number | null` because the
+  // SNAP_POINTS constants are numbers; the union with string is just
+  // Vaul's signature. If a future ADR adds px-string snaps, this is the
+  // place to widen the parent contract.
+  const notifySnap = (snap: number | string | null) => {
+    setActiveSnapPoint(snap);
+    if (typeof snap === "number" || snap === null) {
+      onSnapChange?.(snap);
+    } else {
+      // Defensive: if a future change feeds Vaul a string, we still want
+      // the parent to know the drawer is at *some* open snap so it can
+      // pick a sane default offset. Pass DEFAULT_SNAP as the proxy.
+      onSnapChange?.(DEFAULT_SNAP);
+    }
+  };
+
+  // When the drawer opens (poi flips from null → non-null), Vaul will set
+  // the active snap to whatever we pass in `activeSnapPoint`. We reset to
+  // the default in the same render pass via the `key`-based remount.
+  // When the drawer closes via `onOpenChange(false)`, we also notify the
+  // parent that the snap is now null. This is wired in the wrapping
+  // `onOpenChange` handler below.
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      // Reset internal state and notify the parent. Without this the
+      // next open would inherit the last drag position; we want every
+      // open to start at half.
+      setActiveSnapPoint(DEFAULT_SNAP);
+      onSnapChange?.(null);
+    }
+    onOpenChange(nextOpen);
+  };
 
   // We render the Drawer with a stable `key={poi?.slug}` so that switching
   // from one POI to another (without an intermediate close) gives a fresh
@@ -131,24 +230,77 @@ export function PoiDrawer({ poi, onOpenChange }: PoiDrawerProps) {
   // reads as buggy. With the key, we get a clean close-then-open. (At M1
   // PR3 the parent's flow is open → close → open, so this is theoretical;
   // PR4 may add marker-to-marker switching.)
+  //
+  // **Per-snap modality** is the §6.3 contract ("the map remains visible
+  // behind the sheet at peek and half snaps"). Vaul's `modal` prop is
+  // Root-level (no per-snap config) and short-circuits the overlay
+  // entirely when false, so we keep `modal={false}` (no overlay, no
+  // body-position-fix on iOS Safari, no event capture above the sheet)
+  // and render our **own cozy backdrop** at the full snap as a sibling
+  // element below. The overlay is purely decorative + dismiss-on-tap; we
+  // re-implement those two responsibilities ourselves so that peek/half
+  // truly leave the map untouched.
+  //
+  // The `overlayClassName` prop on `DrawerContent` is left unused for
+  // this drawer (it would set classes on Vaul's overlay, which is null
+  // when modal=false). It remains the documented escape hatch for
+  // future drawers (settings, journal) that may want a different per-
+  // snap backdrop strategy without forking the primitive.
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} key={poi?.slug ?? "closed"}>
+    <Drawer
+      open={open}
+      onOpenChange={handleOpenChange}
+      key={poi?.slug ?? "closed"}
+      // Three snap points per §6.3. Vaul accepts the array as a fraction
+      // of the screen height (0..1). The order is least-visible →
+      // most-visible (peek 0.3 → half 0.6 → full 0.95).
+      snapPoints={[...SNAP_POINTS]}
+      activeSnapPoint={activeSnapPoint}
+      setActiveSnapPoint={notifySnap}
+      // `fadeFromIndex={2}` is harmless when `modal=false` (no overlay
+      // to fade) but documented for the day a future ADR flips this to
+      // `modal=true` — the fade target is the full snap.
+      fadeFromIndex={FADE_FROM_FULL_INDEX}
+      modal={false}
+    >
+      {/*
+       * Custom cozy backdrop, painted only at the full snap. Sibling to
+       * `<DrawerContent>` so it sits behind the sheet in z-order (the
+       * sheet itself uses z-50; this backdrop uses z-40). Tap-to-dismiss
+       * is wired via `onClick` — the click toggles the drawer to peek
+       * (or you could also flip it closed; we go to peek so a stray tap
+       * doesn't cancel the player's POI viewing).
+       *
+       * Rendering is gated on `open && activeSnapPoint === SNAP_POINTS[2]`
+       * so the backdrop only mounts at full. The <Drawer> root manages
+       * its own portal for the content; this backdrop renders inline
+       * (in main DOM order) which is sufficient because both `position:
+       * fixed` and `z-40`/`z-50` reliably stack above the map. (If a
+       * future ADR introduces a portal target to the body, mirror this
+       * backdrop into the same portal.)
+       */}
+      {open && activeSnapPoint === SNAP_POINTS[2] ? (
+        <div
+          data-testid="poi-drawer-backdrop"
+          aria-hidden="true"
+          onClick={() => notifySnap(SNAP_POINTS[1])}
+          className={cn(
+            "fixed inset-0 z-40",
+            // Cozy warm-foreground-tinted dim (~18% alpha). Same tone
+            // family as the PR3 overlayClassName, applied here directly
+            // because we're not going through Vaul's overlay anymore.
+            "bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]",
+            // Soft fade-in. The §6.5 sheet-transition baseline is
+            // 250ms; 200ms reads slightly snappier because the user
+            // already initiated the gesture by dragging to full.
+            "animate-in fade-in-0 duration-200",
+            // Backdrop blur where supported — progressive enhancement.
+            "supports-[backdrop-filter]:backdrop-blur-xs",
+          )}
+        />
+      ) : null}
+
       <DrawerContent
-        // Cozy backdrop tint. The primitive's default is `bg-black/10` —
-        // pure black at 10% alpha, which reads cool/graphic against the
-        // warm-paper map. Override to a `--foreground`-tinted dim that
-        // sits in the warm palette family. The PR4 (Frontend Developer)
-        // slice configures Vaul's `modal` prop per-snap so this backdrop
-        // is only painted at the *full* snap; at peek/half the map stays
-        // fully readable. The class still has the supports-backdrop-filter
-        // blur as a progressive enhancement on browsers that have it.
-        overlayClassName={cn(
-          // Override the primitive default. `bg-[color-mix...]` resolves
-          // to the same alpha (~10%) as the original `bg-black/10` but
-          // tinted toward `--foreground` so the dim reads warm cocoa
-          // light / warm-charcoal dark instead of flat black.
-          "!bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]",
-        )}
         // Cozy chrome refinements (consumer-level so other future drawers —
         // settings, journal, NPC dialogue — can adopt their own):
         //
@@ -166,13 +318,12 @@ export function PoiDrawer({ poi, onOpenChange }: PoiDrawerProps) {
         //    shadow above the sheet (the "elevation hint" the brief asks
         //    for). Pure-black would read cool/graphic against the warm
         //    paper map; foreground-tinted reads cozy.
-        //  - Cap height at ~85svh so on tall phones the sheet doesn't
-        //    swallow the whole map even at "full" — keeps a sliver of
-        //    map visible for orientation, which §6.3 calls out for peek/
-        //    half ("the map remains visible behind the sheet"). At M1
-        //    PR3 the drawer opens at Vaul's default size (~80svh); cap is
-        //    a guard for very short content. PR4's three-snap-point
-        //    config supersedes this for the per-snap heights.
+        //  - With three snap points active, Vaul drives the sheet height
+        //    via the active-snap fraction (0.3 / 0.6 / 0.95 of svh). The
+        //    primitive's default `max-h-[80vh]` would clip the full snap
+        //    (95svh > 80vh on tall phones); we override to 95svh so the
+        //    full snap can reach its declared size. Peek and half are
+        //    well below that cap so the override is invisible there.
         //
         // The primitive's default drag-handle (mx-auto mt-4 h-1 w-[100px]
         // bg-muted) is hidden via the `[&>div:first-child]:hidden` class
@@ -181,7 +332,7 @@ export function PoiDrawer({ poi, onOpenChange }: PoiDrawerProps) {
         // consumers keep the default unless they opt in to a cozy
         // override of their own.
         className={cn(
-          "data-[vaul-drawer-direction=bottom]:max-h-[85svh]",
+          "data-[vaul-drawer-direction=bottom]:max-h-[95svh]",
           "data-[vaul-drawer-direction=bottom]:rounded-t-3xl",
           "data-[vaul-drawer-direction=bottom]:border-t-0",
           // Upward warm-tinted shadow. y=-8px, blur=24px, foreground @

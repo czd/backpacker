@@ -1,18 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
+import { animate, useReducedMotion } from "framer-motion";
 import {
+  Layer,
   Map,
   Marker,
   NavigationControl,
+  Source,
   type MapRef,
 } from "react-map-gl/maplibre";
 import type { StyleSpecification } from "maplibre-gl";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
+import { AvatarMarker } from "./avatar-marker";
+import {
+  bearingDeg,
+  haversineKm,
+  lerp,
+  travelDurationMs,
+  type LngLat,
+} from "./geo";
 import { PoiMarker } from "./poi-marker";
-import { PoiDrawer, type Poi } from "./poi-drawer";
+import { PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -35,6 +46,32 @@ const KEY_PLACEHOLDER = "__MAPTILER_KEY__";
 // MapLibre uses [lng, lat], not [lat, lng].
 const LISBON_CENTER: [number, number] = [-9.14, 38.713];
 const LISBON_ZOOM = 13;
+
+// Avatar starting position. The brief's §5 narrative beat is "the player
+// has just arrived at the airport"; their first natural fast-travel is
+// airport → hostel. Coordinates match the `lisbon-aeroporto` POI in the
+// M1 PR1 seed exactly (so the avatar visually overlaps the airport
+// marker before the first leg, and the bearing computation lands on
+// roughly south for the first hop).
+//
+// This is intentionally a literal pair rather than a re-import from
+// `convex/seed.ts`: the seed file is a Convex action with backend types
+// the client bundle should not pull in. If the seed coordinates ever
+// change, this constant is the place to keep them in sync — flagged in
+// the code comment so a future contributor sees the duplication and
+// keeps it deliberate.
+const AIRPORT_COORDS: LngLat = { lng: -9.13335, lat: 38.77131 };
+
+// Trail layer ID. Stable so MapLibre's `Source`/`Layer` reconcile across
+// renders (react-map-gl uses these IDs as keys).
+const TRAIL_LAYER_ID = "travel-trail";
+const TRAIL_SOURCE_ID = "travel-trail-source";
+
+// Trail fade-out duration after arrival. ~400ms matches AGENTS.md §6.5
+// page-transition baseline — long enough to read as "the trail dissolves,"
+// short enough that the next interaction (player tapping the next POI)
+// doesn't have to wait.
+const TRAIL_FADE_OUT_MS = 400;
 
 /**
  * Subscribe to `prefers-color-scheme: dark` and re-render when the OS
@@ -148,48 +185,289 @@ export function LisbonMap() {
   // pattern UI Designer's slice flagged.
   const [selectedPoi, setSelectedPoi] = useState<Doc<"pois"> | null>(null);
 
-  // Imperative handle on the map for `panTo`. AGENTS.md §6.3 calls for the
-  // bottom sheet to obscure the map at the half-snap; until M1 PR4 ships
-  // the three-snap-point drawer (peek leaves the map fully visible), we
-  // mitigate the obscured-tapped-marker problem by panning the marker into
-  // the upper third of the viewport when the drawer opens. See the
-  // `handlePoiSelect` comment below for the offset math.
+  // Active drawer snap point. Drives the camera-offset calculus below. A
+  // value of `null` means the drawer is closed (no offset, no panTo on
+  // snap-changes). When the drawer opens, the drawer wrapper notifies us
+  // with the half-snap default (0.6); subsequent drag operations notify
+  // with the new snap.
+  const [activeSnapPoint, setActiveSnapPoint] = useState<number | null>(null);
+
+  // Avatar state — see AGENTS.md §7.1. Initial position is the airport
+  // (per the brief's narrative beat: the player has just arrived). The
+  // `traveling` flag drives the avatar marker's accelerated pulse and the
+  // dotted-line trail's visibility. `facing` is the current bearing (0 =
+  // north) and is set to point at the destination when a fast-travel
+  // begins. `trailEnd` records where the trail terminates while traveling
+  // *and* during the brief fade-out window after arrival; null otherwise.
+  const [avatar, setAvatar] = useState<LngLat>(AIRPORT_COORDS);
+  const [traveling, setTraveling] = useState(false);
+  const [facing, setFacing] = useState(0);
+  const [trail, setTrail] = useState<{
+    start: LngLat;
+    end: LngLat;
+    // `opacity` is animated to 0 during the fade-out after arrival; while
+    // `traveling` is true it is held at 1.
+    opacity: number;
+  } | null>(null);
+
+  // Framer's reduced-motion hook. We use it to short-circuit the fast-
+  // travel animation under `prefers-reduced-motion: reduce` — the avatar
+  // jump-cuts to the destination, the trail is skipped entirely, and the
+  // `traveling` flag still flips briefly so the avatar's traveling-state
+  // visual is reachable for the e2e test.
+  const reducedMotion = useReducedMotion();
+
+  // Imperative handle on the map for `panTo`.
   const mapRef = useRef<MapRef | null>(null);
 
-  const handlePoiSelect = (poi: Doc<"pois">) => {
-    setSelectedPoi(poi);
+  // Generation counter for fast-travel runs. When a new travel starts,
+  // the counter increments; any in-flight animate() callbacks still
+  // belonging to the previous run check this and bail out before
+  // mutating state. Without this, a player who taps marker A → marker B
+  // mid-travel would see the trail's fade-out from leg A overwriting
+  // leg B's freshly-set opacity (visible flicker). The ref + check is
+  // cheaper than building animate-controls.cancel() plumbing for the
+  // M1 single-active-travel contract; if a future PR enables queued or
+  // cancellable travel, swap to the controls-object cancel pattern.
+  const travelGenRef = useRef(0);
 
-    // Pan the map so the tapped POI sits in the upper third of the visible
-    // map area, where the drawer (which opens at Vaul's default ~80% height
-    // in M1 PR3) does not cover it. We pass `offset` in pixels: positive y
-    // is south in screen space, so a negative-y offset shifts the target
-    // northward in the viewport. Aiming for the POI to land at viewport
-    // y = 30% means it needs to display 20% of viewport-height *above*
-    // viewport center, hence offset = [0, -0.2 * height]. M1 PR4's three-
-    // snap-point drawer changes this calculus per snap level — at the peek
-    // snap (~30% covered), the natural map center is fine; the half snap
-    // (~60%) wants something closer to this PR3 offset; the full snap
-    // (~95%) means the marker is covered regardless. PR4 will need to
-    // re-derive this offset per snap state.
-    //
-    // `essential: false` is the §6.5 prefers-reduced-motion knob: when the
-    // OS reports `(prefers-reduced-motion: reduce)`, MapLibre treats this
-    // animation as non-essential and skips the transition (the camera jumps
-    // to the destination). Per AGENTS.md §6.5, motion under reduced-motion
-    // is fades-only ≤150ms; an instant pan is the closest stay-in-spec
-    // behavior MapLibre's animation system offers. The 600ms duration is
-    // longer than the §6.5 250ms sheet-transition standard on purpose: a
-    // map pan reads slow-and-cozy where a sheet swap reads snappy.
-    const map = mapRef.current;
-    if (!map) return;
-    const container = map.getContainer();
-    const offsetY = -container.clientHeight * 0.2;
-    map.panTo([poi.lng, poi.lat], {
-      duration: 600,
-      offset: [0, offsetY],
-      essential: false,
-    });
-  };
+  /**
+   * Compute the snap-aware camera offset for `panTo`. AGENTS.md §6.3:
+   * the drawer is at peek (~30% covered) / half (~60% covered) / full
+   * (~95% covered).
+   *
+   *  - **peek**: no offset. The natural map center is fine because only
+   *    the bottom 30% of the viewport is the sheet; the marker landing at
+   *    viewport y=50% has the full upper half of map to itself.
+   *  - **half**: `[0, -0.2 * height]`. Mirrors the M1 PR3 behavior so the
+   *    marker lands at viewport y=30%, well above the half-snap edge.
+   *  - **full**: no pan. The marker is covered regardless of where the
+   *    camera lands, so we pan to the marker without an offset; if the
+   *    player drags the drawer back to peek/half, the marker is centered
+   *    horizontally and visible.
+   */
+  const offsetForSnap = useCallback(
+    (snap: number | null): [number, number] => {
+      const map = mapRef.current;
+      if (!map) return [0, 0];
+      const height = map.getContainer().clientHeight;
+      // The peek-snap and full-snap branches both want zero offset, but
+      // for different reasons (peek: marker is already visible at center;
+      // full: marker is occluded so don't bother). Half is the only
+      // non-zero offset.
+      if (snap === SNAP_POINTS[1]) {
+        return [0, -0.2 * height];
+      }
+      return [0, 0];
+    },
+    [],
+  );
+
+  /**
+   * Pan the camera to the given POI with the offset appropriate to the
+   * current drawer snap. Used both when a POI is first selected (snap is
+   * the default 0.6) and when the user drags the drawer between snaps
+   * while a POI is selected (we re-pan so the marker stays comfortable).
+   *
+   * `essential: false` is the §6.5 prefers-reduced-motion knob: when the
+   * OS reports `(prefers-reduced-motion: reduce)`, MapLibre treats this
+   * animation as non-essential and skips the transition (the camera
+   * jumps to the destination). Per §6.5 standards, motion under
+   * reduced-motion is fades-only ≤150ms; an instant pan is the closest
+   * stay-in-spec behavior MapLibre's animation system offers.
+   */
+  const panToPoi = useCallback(
+    (poi: { lng: number; lat: number }, snap: number | null) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const offset = offsetForSnap(snap);
+      // Snap-change re-pans use a slightly shorter duration (300ms)
+      // because they're a follow-up adjustment to a drawer-drag the
+      // player just performed; the original 600ms reads slow when it's
+      // the second camera move within the same second. Initial selects
+      // keep the 600ms pace via the explicit `handlePoiSelect` path.
+      map.panTo([poi.lng, poi.lat], {
+        duration: 300,
+        offset,
+        essential: false,
+      });
+    },
+    [offsetForSnap],
+  );
+
+  /**
+   * Run the fast-travel animation: facing → bearing, traveling → true,
+   * lerp avatar lng/lat from current → destination over a duration tied
+   * to distance, then traveling → false. The dotted-line trail is set up
+   * before the animation and faded out after.
+   *
+   * Under `prefers-reduced-motion`, we skip the position animation
+   * (jump-cut) and the trail entirely, but still flip the `traveling`
+   * flag for ~200ms so the visual state is reachable (and so a
+   * reduced-motion user still gets a moment of "you're moving" feedback,
+   * which is the spirit of §6.5 — reduce, don't remove).
+   *
+   * The function is async-friendly (returns a Promise) but we don't
+   * await it from the click handler — the camera pan, drawer open, and
+   * fast-travel run in parallel by design. The drawer's gesture target
+   * (the sheet itself) and the map's gesture target (the canvas) don't
+   * conflict; both can complete in parallel without coordination.
+   */
+  const fastTravelTo = useCallback(
+    async (destination: LngLat) => {
+      const start: LngLat = { ...avatar };
+      const distKm = haversineKm(start, destination);
+      const bearing = bearingDeg(start, destination);
+
+      // Bump the generation; any in-flight animate() callbacks from a
+      // previous run will check this against their captured value and
+      // bail out before mutating state.
+      const gen = ++travelGenRef.current;
+      const isCurrent = () => travelGenRef.current === gen;
+
+      // Set facing first so the notch starts springing toward the new
+      // bearing in time with the position animation. The avatar marker's
+      // own spring handles the smooth rotation.
+      setFacing(bearing);
+
+      if (reducedMotion) {
+        // Reduced-motion path: skip the trail, jump-cut the position,
+        // briefly flash `traveling` so the visual state is reachable,
+        // then settle. No setInterval, no animate() — pure state flips.
+        setTraveling(true);
+        setAvatar(destination);
+        // Hold the traveling flag for 200ms (matches §6.5's reduced-
+        // motion fades-only ≤150ms upper bound, with a small grace).
+        await new Promise<void>((resolve) =>
+          setTimeout(() => {
+            if (isCurrent()) setTraveling(false);
+            resolve();
+          }, 200),
+        );
+        return;
+      }
+
+      // Full-motion path. Set up the trail first so the line appears
+      // simultaneously with the avatar starting to move (a single React
+      // render commits both state updates in the same tick).
+      setTrail({ start, end: destination, opacity: 1 });
+      setTraveling(true);
+
+      const durationMs = travelDurationMs(distKm);
+      // animate() returns a controls object with a .then; awaiting it
+      // resolves when the animation finishes (or is cancelled). We do
+      // *not* try to cancel on unmount in this slice — the LisbonMap
+      // root is a long-lived client component, and the leaf states
+      // (avatar, traveling, trail) are reset by the nullable trail
+      // path even if a navigation interrupts. (If a future PR adds
+      // route-level navigation that unmounts the map mid-travel, wrap
+      // this in a useEffect cleanup.)
+      await animate(0, 1, {
+        duration: durationMs / 1000,
+        // §6.5: ease-out for entries / things that arrive. Fast-travel
+        // is the avatar arriving at the destination — ease-out reads
+        // as the avatar gently settling into the marker.
+        ease: "easeOut",
+        onUpdate: (t) => {
+          if (!isCurrent()) return;
+          setAvatar({
+            lng: lerp(start.lng, destination.lng, t),
+            lat: lerp(start.lat, destination.lat, t),
+          });
+        },
+      });
+
+      // If a newer travel started while we were animating, bail out —
+      // the new run owns `traveling`, `trail`, and `avatar` now.
+      if (!isCurrent()) return;
+      setTraveling(false);
+
+      // Fade out the trail. `animate` again, this time on the trail's
+      // opacity. We use a separate animation rather than chaining so
+      // the avatar's `traveling=false` flip happens immediately on
+      // arrival; the trail dissolving is a courtesy that doesn't gate
+      // the next interaction.
+      await animate(1, 0, {
+        duration: TRAIL_FADE_OUT_MS / 1000,
+        ease: "easeOut",
+        onUpdate: (o) => {
+          if (!isCurrent()) return;
+          setTrail((prev) => (prev ? { ...prev, opacity: o } : prev));
+        },
+      });
+      if (!isCurrent()) return;
+      setTrail(null);
+    },
+    [avatar, reducedMotion],
+  );
+
+  const handlePoiSelect = useCallback(
+    (poi: Doc<"pois">) => {
+      setSelectedPoi(poi);
+
+      // Pan the camera with the half-snap offset by default — that's the
+      // snap the drawer opens at per the M1 DoD. If the player has
+      // already opened a drawer at a different snap (e.g. they dragged
+      // to peek before tapping a different marker), the drawer wrapper
+      // resets to the default snap on key-remount, so the half offset
+      // is correct.
+      const map = mapRef.current;
+      if (map) {
+        const offset = offsetForSnap(SNAP_POINTS[1]);
+        map.panTo([poi.lng, poi.lat], {
+          duration: 600,
+          offset,
+          essential: false,
+        });
+      }
+
+      // Kick off the fast-travel animation. Don't await — the camera
+      // pan, drawer open, and avatar travel run in parallel.
+      void fastTravelTo({ lng: poi.lng, lat: poi.lat });
+    },
+    [fastTravelTo, offsetForSnap],
+  );
+
+  /**
+   * Snap-change handler from the drawer. When the user drags the drawer
+   * to a new snap, re-pan the camera with the new offset so the selected
+   * marker stays comfortably visible (or stops being chased, at full
+   * snap). When the drawer closes, the snap is null and we leave the
+   * camera where it is — closing already implies the player has finished
+   * with this POI.
+   */
+  const handleSnapChange = useCallback(
+    (snap: number | null) => {
+      setActiveSnapPoint(snap);
+      if (snap === null || !selectedPoi) return;
+      panToPoi(selectedPoi, snap);
+    },
+    [panToPoi, selectedPoi],
+  );
+
+  // Memoized GeoJSON for the trail. react-map-gl's `<Source>` accepts a
+  // raw object; the memoization keeps the source stable across renders
+  // when the trail itself hasn't changed (otherwise MapLibre would treat
+  // every render as a source-data update, an expensive operation).
+  const trailGeoJson = useMemo(() => {
+    if (!trail) return null;
+    return {
+      type: "FeatureCollection" as const,
+      features: [
+        {
+          type: "Feature" as const,
+          properties: {},
+          geometry: {
+            type: "LineString" as const,
+            coordinates: [
+              [trail.start.lng, trail.start.lat],
+              [trail.end.lng, trail.end.lat],
+            ],
+          },
+        },
+      ],
+    };
+  }, [trail]);
 
   return (
     // `relative h-svh w-full overflow-hidden` is the positioning context
@@ -272,6 +550,65 @@ export function LisbonMap() {
           />
 
           {/*
+           * Dotted-line trail (§7.1 "a small animated transition (a
+           * walking dotted-line on the map)"). Rendered as a MapLibre
+           * `line` layer fed by a GeoJSON LineString from the avatar's
+           * start position to the destination. Two paint properties
+           * carry the cozy character:
+           *   - `line-color`: a `--muted-foreground`-ish CSS variable
+           *     resolved via getComputedStyle isn't readable from
+           *     MapLibre's paint expression, so we use a literal warm-
+           *     muted hex (#a89280-ish) tuned to sit between the
+           *     warm-paper map and the saturated POI markers. The
+           *     trail is supportive, not the hero.
+           *   - `line-dasharray: [2, 4]`: a static dashed pattern,
+           *     matching the brief's "dotted line" language. We do NOT
+           *     animate the dasharray in this slice — see the BUILD-LOG
+           *     entry for the rationale (static-fade-in/out reads cozy,
+           *     avoids a 60Hz setInterval, and is friendlier under
+           *     reduced-motion as a no-op skip rather than a frozen
+           *     marching-ants frame). If a future Whimsy pass wants the
+           *     marching effect, it can layer it on top.
+           *
+           * Layer placement: MapLibre paints layers in declaration order
+           * (older first). Markers (PoiMarker, AvatarMarker) are HTML
+           * children of the map container, NOT MapLibre layers, so they
+           * always paint on top of the canvas regardless. We don't need
+           * `beforeId` here.
+           */}
+          {trailGeoJson ? (
+            <Source
+              id={TRAIL_SOURCE_ID}
+              type="geojson"
+              data={trailGeoJson}
+            >
+              <Layer
+                id={TRAIL_LAYER_ID}
+                type="line"
+                paint={{
+                  // Cozy muted brown — sits between paper and marker
+                  // colors. Readable on both light and dark cozy
+                  // styles (we don't have per-scheme tokens accessible
+                  // to MapLibre's paint expressions, so we picked a
+                  // warm grey that survives both schemes; it visually
+                  // softens the line on the dark map by virtue of
+                  // contrast against the cocoa background).
+                  "line-color": "#a89280",
+                  "line-width": 3,
+                  "line-dasharray": [2, 4],
+                  // `trail.opacity` drives the fade-out after arrival.
+                  // While traveling, opacity is held at 1.
+                  "line-opacity": trail?.opacity ?? 1,
+                }}
+                layout={{
+                  "line-cap": "round",
+                  "line-join": "round",
+                }}
+              />
+            </Source>
+          ) : null}
+
+          {/*
            * POI markers. Rendered only once the query resolves (`pois ===
            * undefined` is the loading state — render no markers and let the
            * map's first paint stand alone; this matches UI Designer's
@@ -310,6 +647,28 @@ export function LisbonMap() {
               />
             </Marker>
           ))}
+
+          {/*
+           * Avatar marker (§7.1 "the player has an avatar that moves
+           * between POIs"). Rendered AFTER the POI markers so it paints
+           * over them when overlapping (paint order in the marker
+           * container DOM = z-stack). Wrapping `<Marker>` reprojects the
+           * avatar's lat/lng on every map move; the inner
+           * `<AvatarMarker>` is `pointer-events-none` so it doesn't
+           * shadow the POI markers it sits on top of.
+           *
+           * The position state is held in the parent (this component);
+           * during fast-travel, `animate()` (from framer-motion) drives
+           * the lng/lat through `setAvatar` and react-map-gl handles
+           * the projection. No direct MapLibre projection math here.
+           */}
+          <Marker
+            longitude={avatar.lng}
+            latitude={avatar.lat}
+            anchor="center"
+          >
+            <AvatarMarker traveling={traveling} facing={facing} />
+          </Marker>
         </Map>
       ) : null}
 
@@ -365,6 +724,7 @@ export function LisbonMap() {
         onOpenChange={(open) => {
           if (!open) setSelectedPoi(null);
         }}
+        onSnapChange={handleSnapChange}
       />
     </main>
   );
