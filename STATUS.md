@@ -17,8 +17,13 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ### Blocked on owner
 
-**Decisions:**
-1. **ADR-004 sign-off** (or rejection / amendment). Without a budget reframe, every M1+ PR fails §6.7 by construction. Read `DECISIONS.md` ADR-004 and tell me Accept / Modify / Reject.
+**Decisions:** (none open — ADR-004 accepted 2026-05-03)
+
+**MapTiler config (during M1 PR2 mobile testing):**
+- Add Tailscale + Vercel hostnames to MapTiler API-key allowed-origins list. Currently the dev key's origin allowlist excludes the Tailscale hostname `orion-wsl.tail595b35.ts.net`, causing 403s on tiles.json when the page is loaded on a real phone via Tailscale. Same key works on `localhost` because that origin is whitelisted. Either restrict to specific allowlist (`localhost`, `*.tail595b35.ts.net`, `*.vercel.app`, eventual production domain) or remove restrictions entirely for the dev key. Captured in ADR-002's "domain restriction in MapTiler dashboard is a follow-up" line.
+
+**Chore PR (queued, not gating any milestone):**
+- **Wire `size-limit` per ADR-004's CI enforcement clause.** Adds a `size-limit` step to `.github/workflows/lighthouse.yml` (or a parallel workflow) that asserts each route class against its ceiling. Configuration in `package.json` `size-limit` array, one entry per route class, pointing at `.next/static/chunks/*` files matched per route via the `app-build-manifest.json`. Regressions block merge per §6.7. Lands as `chore(ci): size-limit per ADR-004` after Vercel is connected (so we have a real CI environment to validate the workflow against).
 
 **Owner manual gates from M0 still pending:**
 - Vercel connect + `NEXT_PUBLIC_CONVEX_URL` env var

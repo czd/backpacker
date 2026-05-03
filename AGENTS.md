@@ -142,10 +142,10 @@ Mobile-first means a vocabulary of native mobile patterns, not desktop windows s
 
 ### 6.7 Performance budget
 - **Time to first interaction on a mid-range Android (think: Pixel 5 / Galaxy A54 on 4G):** under 3 seconds.
-- **JS bundle (initial):** under 200KB gzipped.
+- **JS bundle (initial):** tiered per route class. See `DECISIONS.md` ADR-004 for the table (splash 270/300, world layer 350/400, journal 300/330, mini-games 320/360 gzipped). The original 200KB target was unreachable for the locked stack and was superseded.
 - **Largest contentful paint:** under 2.5s on the same device profile.
 - **Map tiles** are aggressively cached after first visit; revisiting a city should feel instant.
-- These budgets are checked in CI via Lighthouse on every PR. Regressions block merge.
+- These budgets are checked in CI via Lighthouse on every PR. Regressions block merge. Per-route JS-size enforcement via `size-limit` is a follow-up captured in `STATUS.md`.
 
 ### 6.8 Accessibility (mobile-specific)
 - **Dynamic Type:** if the device sets a larger system font size, we honor it. Layouts must reflow gracefully up to 200% text size.

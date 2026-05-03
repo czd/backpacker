@@ -101,7 +101,7 @@ Practical mapping at M1 (Lisbon):
 ## ADR-004: JS bundle budget reframed per route class
 
 Date: 2026-05-03
-Status: Proposed (awaiting owner sign-off)
+Status: Accepted (owner sign-off 2026-05-03)
 
 ### Context
 
