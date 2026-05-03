@@ -60,6 +60,15 @@ bun run test         # Vitest unit tests
 bunx playwright test # Playwright e2e at the 390x844 mobile viewport
 ```
 
+## Bundle budget enforcement
+
+Per-route JS bundle ceilings come from [DECISIONS.md ADR-004](./DECISIONS.md) (splash 300 kB gz, world layer 400 kB gz, etc.). The `.github/workflows/size-limit.yml` workflow runs `bun run size-limit` on every PR and on pushes to `main`; a PR that regresses past a route's ceiling fails CI. Configuration lives in `.size-limit.cjs` — the header comment block in that file is the canonical record of the measurement methodology and approximation tolerance. Run locally via:
+
+```bash
+bun run build
+bun run size-limit
+```
+
 ## Icons
 
 The four PWA icon PNGs in `public/icons/` are generated from the SVG sources alongside them. To regenerate after editing an SVG:
