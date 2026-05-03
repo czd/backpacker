@@ -4,6 +4,48 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M1 PR4-fixup-2 (camera framing + recenter + handle bug)
+
+### Active milestone
+**M1** — branch `feat/m1-lisbon-map`. PR1–PR4 + PR4-fixup + PR4-fixup-2 all done. PR5 (time-of-day clock + day/night palette) is the last M1 slice.
+
+### Done this session (PR4-fixup-2, commit `cb867bc`)
+Second round of real-phone-testing findings, all four addressed in one slice:
+
+1. **Initial map now frames player + cluster.** First paint used `initialViewState` centered on the central Baixa cluster; the avatar (at the airport, 6.4km north) was offscreen. Replaced with `fitBounds([avatar, cluster-centroid])` gated on `mapLoaded && pois !== undefined`, `animate: false`. New helpers in `geo.ts`: `centroidOf`, `boundsForFit`. Player visible from the first frame.
+2. **Recenter button per §7.1.** New `<RecenterButton>` top-right, `LocateFixed` icon, `pt-safe pr-safe m-3`, 44pt floor, cozy palette. Tap → `easeTo(avatar, zoom 14, 600ms, essential:false)`. Hidden while `traveling === true` (camera is already focused). `data-testid="recenter-button"`.
+3. **Travel camera fits both endpoints.** Before fast-travel kicks off, `fitBounds([avatar, destination])` runs in parallel with the drawer-snap-to-peek. Bottom padding 32% × viewport-height accounts for the drawer at peek so endpoints don't sit just above its edge. `essential: false` for reduced-motion (jump-cut). On arrival, the existing `panToPoi(destination, snap)` takes over for the half-snap focus. Owner reported "all you see is lines coming towards you" — fixed.
+4. **Drawer handle now centered.** Root cause: Vaul auto-injects its stylesheet via `head.appendChild` at runtime, AFTER our Tailwind utilities, so its `position: relative` on `[data-vaul-handle]` overrode our `absolute`, and our `left-1/2` then shifted the now-relative element 195px right of Vaul's `margin: auto` center. Fix: drop absolute positioning, work with Vaul's natural flex-column centering, use `!` Tailwind modifiers to win per-property cascade contests. Playwright assertion (handle centerX vs drawer centerX delta ≤ 2px) added so it can't drift.
+
+### Bundle situation
+ADR-004 world-layer ceiling 400 KB gzipped.
+- Pre-fixup-2: 270.32 KB
+- Post-fixup-2: 271.03 KB (+0.71 KB)
+- Methodology drift unchanged: this number sums every chunk referenced from `lisbon.html` excluding webpack's lazy-loaded chunks. Older PR4-fixup measurement reported 231.2 KB on the same kind of route — different methodology. **Still queued: the `size-limit` chore PR pins this once and for all.**
+
+### Verification
+- `bun run build` passes (Next 16.2.4, webpack, TypeScript clean)
+- `bun run test`: **84/84 vitest** across 7 files (+11 geo tests for centroid/bbox helpers, +7 recenter-button tests)
+- `bunx playwright test --list`: 32 tests
+- `bunx playwright test`: **32/32 e2e pass** at 390×844 (one transient flake on initial Convex query resolution; cleanly passing on re-run)
+
+### Cross-cutting flags from PR4-fixup-2
+
+**For PR5 (time-of-day clock + day/night palette):**
+- `LisbonMap` state count is climbing (`selectedPoi`, `activeSnapPoint`, `currentPoiSlug`, `avatar`, `traveling`, `facing`, `trail`, `mapLoaded`, `didInitialFitRef`). PR5's clock + palette will push this further. **Trigger to extract to Zustand is approaching.** §8 says "Zustand for UI; Convex for game" — the time-of-day clock is UI state, fits Zustand cleanly.
+- The recenter button occupies top-right. PR5's time-of-day clock probably wants top-left or top-center to avoid collision. Plan for the HUD layout when wiring the clock.
+- The during-travel `fitBounds` uses `essential: false` for reduced-motion (duration: 0). PR5's palette swap should mirror that contract — palette transitions are jump-cuts under reduced-motion.
+- `RECENTER_ZOOM = 14` is hardcoded. If PR5 introduces "you're in city X at time Y" framing, this may want to be city-tuned.
+
+**For M2+ (multi-city future):**
+- `boundsForFit` and `centroidOf` in `geo.ts` are city-agnostic. When Tokyo/Marrakech ship in M4, the same code wires their initial-fit and during-travel-fit. Per-city the only thing that changes is "where does the player start?" — currently hardcoded to airport coords. M2 save-state moves this to player state.
+
+**Conventions established (carrying forward):**
+- **`hidden={busy}` pattern for HUD chrome.** RecenterButton hidden during travel. Reusable for any task-specific affordance that should disappear during an in-progress action (M2 mini-game "leave" buttons during a critical animation, M3 dialogue advance during a transition, etc.).
+- **Vaul stylesheet cascade gotcha is now documented.** Future drawer styling that targets wrapper elements (not just children) needs `!` modifiers or higher-specificity selectors to beat `[data-vaul-*]` runtime-injected rules. Settings drawer / journal sheet / NPC dialogue sheet in M3+ inherit this.
+
+---
+
 ## 2026-05-03 — M1 PR4-fixup (real-phone UX fixes)
 
 ### Active milestone

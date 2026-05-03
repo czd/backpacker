@@ -12,6 +12,25 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR4-fixup-2 — Camera framing + recenter + handle bug
+
+### Shipped
+Map now frames the player and the cluster on first paint (`fitBounds([avatar, cluster-centroid])`, `animate: false`). New `<RecenterButton>` top-right, hidden during travel, `easeTo` to player on tap. During fast-travel, camera fits both origin and destination (in parallel with the drawer snap-to-peek), so the player sees the whole journey rather than "lines coming toward them." Drawer handle now centered (Vaul stylesheet cascade gotcha untangled). Bundle delta +0.71 KB. 84/84 vitest + 32/32 e2e.
+
+### Highlights from review
+
+- **The fit-bounds approach beats follow-cam for cozy.** The owner offered both as options. Fit-bounds shows the whole journey at once, like a postage stamp marking a route in dotted ink — cinematic without being cinematic. Follow-cam tracks the avatar like a video game character, which would be more involved (continuous camera updates synchronized with avatar interpolation) and more game-feel-y than cozy. The fit-bounds choice also doesn't fight the player's pan gestures the way a follow-cam would. Cinematic when it should be, calm otherwise.
+- **`hidden={traveling}` on the recenter button is a small but durable pattern.** During travel, the camera is already focused on origin/destination; a "find me" button is just noise. Hiding it for those few seconds (without animating it away — the brief favors predictable beats clever) clears the HUD for the moment that matters. Reusable for any HUD chrome that's task-specific and should disappear during an in-progress action — M2 mini-game escape buttons during critical beats, M3 dialogue advance affordances during transitions, etc.
+- **The cluster-centroid framing is more honest than fitting all POIs.** Including the airport in the bounds calculation would stretch the bbox vertically and zoom out further than ideal, making "central Lisbon" small. Fitting the avatar (at the airport) and the centroid of the *non-airport* POIs gives a frame where central Lisbon reads at scale and the player's starting point is unambiguously visible at the top. The `centroidOf` helper is one of those small helpers that read better as a named function than as inline math.
+
+### Surprises
+
+- **Vaul auto-injects its stylesheet at runtime via `head.appendChild`, AFTER our Tailwind utilities.** This is the reason the drawer drag-handle was right-aligned. Vaul's CSS-in-JS injection happens at module load; Tailwind's utility stylesheet was already in `<head>`. Source order in CSS resolution means Vaul wins per-selector specificity ties — its `[data-vaul-handle] { position: relative }` overrode our `absolute`, and our `left-1/2` then shifted the now-relative element 195px right of where Vaul's `margin: auto` had centered it. The fix: stop fighting Vaul's defaults; work with its natural centering and use Tailwind v4 `!` modifiers to win the per-property contests for properties we genuinely want to override. **Cross-cutting durable knowledge:** any future drawer styling that targets the wrapper element (not just children) needs `!` modifiers or higher-specificity selectors to beat `[data-vaul-*]` runtime-injected rules. Settings drawer, journal sheet, NPC dialogue sheet in M3+ inherit this gotcha.
+- **Bundle methodology drift continues.** Pre-fixup-2 was reported as 270 KB; PR4-fixup reported 231 KB on the same kind of route a few hours earlier. Same code path, different number — depending on whether webpack's lazy chunks are summed in. Both are "right" depending on what you mean by First Load JS. The `size-limit` chore PR (queued behind Vercel connect) needs to land before this drifts further; until then, treat the trend (small deltas slice-to-slice) as the meaningful signal, not the absolute number.
+- **A transient e2e flake on initial Convex query resolution.** Under parallel-test load (8 workers in Playwright config) the realtime POI query occasionally hadn't resolved by the time the marker-count assertion fired. Cleanly passing on re-run and in the full suite. Not introduced by this slice; flagged because it's likely to recur as the e2e suite grows. The right fix is `expect.poll()` on the `useQuery` resolution before any marker-dependent assertion; PR3's existing markers-have-loaded gate covers most cases but not all.
+
+---
+
 ## 2026-05-03 — M1 PR4-fixup — Real-phone UX fixes
 
 ### Shipped
