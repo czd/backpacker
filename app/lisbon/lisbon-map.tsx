@@ -15,6 +15,7 @@ import type { StyleSpecification } from "maplibre-gl";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { AvatarMarker } from "./avatar-marker";
+import { phaseOf, useGameClockStore, type Phase } from "./game-clock-store";
 import {
   bearingDeg,
   boundsForFit,
@@ -24,9 +25,11 @@ import {
   travelDurationMs,
   type LngLat,
 } from "./geo";
+import { lingerVerbFor } from "./linger-verbs";
 import { PoiMarker } from "./poi-marker";
 import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 import { RecenterButton } from "./recenter-button";
+import { TimeOfDayClock } from "./time-of-day-clock";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -39,9 +42,54 @@ import { RecenterButton } from "./recenter-button";
 // See `scripts/generate-map-styles.ts` for how these JSON files are
 // produced and what overrides have been applied to the upstream
 // streets-v2 style. See AGENTS.md §7.1 for the design intent.
-const STYLE_URL_LIGHT = "/map-styles/cozy-light.json";
-const STYLE_URL_DARK = "/map-styles/cozy-dark.json";
+//
+// **M1 PR5 (per ADR-006):** the file pair was renamed from
+// cozy-{light,dark}.json to cozy-{day,night}.json so the day/night
+// palette transitions across in-game phase boundaries via
+// `map.setStyle({ diff: true })`. The `useCozyStyle` hook below now
+// takes a `phase: Phase | null` argument; the OS-preference fallback
+// is used only when phase is null (vanishingly rare given the store
+// has a non-null default of 870, but kept for SSR-safety).
+//
+// **dawn / dusk fallback:** UI Designer's next slice authors
+// `cozy-dawn.json` and `cozy-dusk.json`. Until then this hook falls
+// back: dawn → cozy-day.json, dusk → cozy-night.json. The runtime
+// shape is correct today; only the palette tables are pending.
+const STYLE_URL_DAY = "/map-styles/cozy-day.json";
+const STYLE_URL_NIGHT = "/map-styles/cozy-night.json";
 const KEY_PLACEHOLDER = "__MAPTILER_KEY__";
+
+/**
+ * Resolve the style URL for a given in-game phase. Per ADR-006 + the
+ * M1 PR5 brief: dawn/dusk JSONs don't exist yet (UI Designer's slice),
+ * so we fall back: dawn → day, dusk → night. When UI Designer ships
+ * dawn/dusk, swap these to dedicated URLs and the hook + setStyle
+ * effect pick up the new palettes with no other changes.
+ */
+function styleUrlForPhase(phase: Phase): string {
+  switch (phase) {
+    case "dawn":
+      // Dawn fallback → day. UI Designer slice replaces with
+      // "/map-styles/cozy-dawn.json".
+      return STYLE_URL_DAY;
+    case "day":
+      return STYLE_URL_DAY;
+    case "dusk":
+      // Dusk fallback → night. UI Designer slice replaces with
+      // "/map-styles/cozy-dusk.json".
+      return STYLE_URL_NIGHT;
+    case "night":
+      return STYLE_URL_NIGHT;
+  }
+}
+
+/**
+ * [PLACEHOLDER] Game-minutes per real-second during fast-travel.
+ * GD-recommended starting value (2026-05-03); needs playtesting. Lower
+ * = walking burns less of the day; higher = more. Marked PLACEHOLDER
+ * so a future tuning pass can grep for it.
+ */
+const GAME_MINS_PER_REAL_SEC_DURING_TRAVEL = 3;
 
 // Lisbon central frame per the M1 PR1 hand-off note — captures the
 // Baixa / Bairro Alto / Castelo cluster. The airport (Aeroporto
@@ -175,16 +223,39 @@ function usePrefersDark(): boolean | null {
  * `__MAPTILER_KEY__` placeholders to the live key from
  * `NEXT_PUBLIC_MAPTILER_KEY`. Returns `null` until the fetch resolves;
  * caller renders the map only when the style is ready.
+ *
+ * **M1 PR5 (per ADR-006):** signature widened from `(prefersDark)` to
+ * `(phase, prefersDark)`. When `phase` is non-null it drives the URL
+ * selection (`cozy-day.json` / `cozy-night.json`, with dawn/dusk
+ * fallback per `styleUrlForPhase`). When `phase` is null — only at
+ * SSR before the store has hydrated — `prefersDark` is the fallback
+ * input.
+ *
+ * The component using this hook calls `map.setStyle({ diff: true })`
+ * via a separate effect (also keyed on phase) so phase transitions
+ * after the map mounts don't go through this hook's full re-fetch
+ * path; the diff'd swap re-uses tile and glyph caches per ADR-006.
  */
-function useCozyStyle(prefersDark: boolean | null): StyleSpecification | null {
+function useCozyStyle(
+  phase: Phase | null,
+  prefersDark: boolean | null,
+): StyleSpecification | null {
   const [style, setStyle] = useState<StyleSpecification | null>(null);
-  const url = useMemo(
-    () => (prefersDark ? STYLE_URL_DARK : STYLE_URL_LIGHT),
-    [prefersDark],
-  );
+
+  const url = useMemo(() => {
+    if (phase) return styleUrlForPhase(phase);
+    // SSR / pre-hydration fallback: OS preference. This branch is
+    // theoretical given the store's non-null 870 default, but it
+    // keeps the hook robust if a future ADR moves the store to an
+    // initial-fetch-from-Convex-then-default shape.
+    return prefersDark ? STYLE_URL_NIGHT : STYLE_URL_DAY;
+  }, [phase, prefersDark]);
 
   useEffect(() => {
-    if (prefersDark === null) return;
+    // Wait for at least one of the inputs to be readable. With the M1
+    // PR5 store-default at 870, `phase` is non-null on the first
+    // render — this guard mostly covers the theoretical SSR path.
+    if (phase === null && prefersDark === null) return;
     let cancelled = false;
     void (async () => {
       const res = await fetch(url);
@@ -211,7 +282,7 @@ function useCozyStyle(prefersDark: boolean | null): StyleSpecification | null {
     return () => {
       cancelled = true;
     };
-  }, [prefersDark, url]);
+  }, [phase, prefersDark, url]);
 
   return style;
 }
@@ -237,12 +308,50 @@ export function LisbonMap() {
   const showPoiCount =
     process.env.NODE_ENV === "development" && pois && pois.length > 0;
 
-  // Cozy style — light or dark, decided by OS theme. The Map only
-  // renders once the style is ready; before that, the warm-paper
-  // background body color shows through (matched at the CSS-token
-  // level so the swap is visually quiet).
+  // In-game clock. `epochMinute` is the canonical scalar; phaseOf is a
+  // pure derivation. Subscribing to epochMinute (not just phase) means
+  // the visible TimeOfDayClock re-renders every game-minute, while the
+  // setStyle phase-swap effect below only re-fires on phase boundary
+  // crossings (because phase is computed inside its own deps). Per
+  // ADR-005 + ADR-006.
+  const epochMinute = useGameClockStore((s) => s.epochMinute);
+  const phase: Phase = phaseOf(epochMinute);
+
+  // **Dev/test seam.** Expose the game-clock store on window so e2e
+  // tests can force phase boundaries without running real-time loops
+  // to night (the rAF travel loop is the only ambient advance, so
+  // reaching 22:00 from 14:30 in real-time would take ~2.5 minutes
+  // even at the tuned 3 game-min/real-sec rate). Gated behind
+  // NODE_ENV !== 'production' so the seam never ships to players.
+  // The shape is `{ setEpochMinute, advance, getEpochMinute }`;
+  // tests use `setEpochMinute` to pin the clock to a specific phase.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (typeof window === "undefined") return;
+    const w = window as Window &
+      typeof globalThis & {
+        __gameClock?: {
+          setEpochMinute: (m: number) => void;
+          advance: (m: number) => void;
+          getEpochMinute: () => number;
+        };
+      };
+    w.__gameClock = {
+      setEpochMinute: (m: number) =>
+        useGameClockStore.getState().setEpochMinute(m),
+      advance: (m: number) => useGameClockStore.getState().advance(m),
+      getEpochMinute: () => useGameClockStore.getState().epochMinute,
+    };
+    return () => {
+      delete w.__gameClock;
+    };
+  }, []);
+
+  // Cozy style — phase-driven (per ADR-006). OS-preference is the
+  // fallback for the theoretical SSR pre-hydration window only; once
+  // the store's default 870 is read, phase wins.
   const prefersDark = usePrefersDark();
-  const cozyStyle = useCozyStyle(prefersDark);
+  const cozyStyle = useCozyStyle(phase, prefersDark);
 
   // Selected POI state. `Doc<"pois">` is the canonical Convex document type
   // for the pois table; it's also a structural superset of the `Poi` shape
@@ -324,6 +433,90 @@ export function LisbonMap() {
   // M1 single-active-travel contract; if a future PR enables queued or
   // cancellable travel, swap to the controls-object cancel pattern.
   const travelGenRef = useRef(0);
+
+  /**
+   * Mirror `traveling` into a ref so the rAF loop below reads the
+   * latest value without re-creating the loop on every state flip.
+   * Without this, the rAF callback would close over the *initial*
+   * value of `traveling` (= false) and immediately bail; refs avoid
+   * the stale-closure trap. The loop reads `travelingRef.current`
+   * each frame to decide whether to keep looping.
+   */
+  const travelingRef = useRef(false);
+  useEffect(() => {
+    travelingRef.current = traveling;
+  }, [traveling]);
+
+  /**
+   * In-game time advance during fast-travel. Per the M1 PR5 brief:
+   * 3 game-minutes per real-second, gated on `document.hidden` so
+   * backgrounding the tab pauses the world (when the player returns,
+   * the world waited; we do NOT "catch up" elapsed real-time).
+   *
+   * **Reduced-motion path:** instead of running the rAF loop, we
+   * jump-cut the advance — `handleTravelTo` computes the leg's total
+   * duration upfront and calls `advance(total)` once at the start.
+   * The rAF loop is the smooth-time path; the jump-cut is the
+   * reduced-motion equivalent.
+   *
+   * **Unmount safety:** the effect's cleanup cancels the pending rAF
+   * handle. If the component unmounts mid-travel, no orphaned frame
+   * keeps trying to advance the (gone) store.
+   */
+  useEffect(() => {
+    let rafId: number | null = null;
+    let lastFrameTime: number | null = null;
+
+    const tick = (now: number) => {
+      // Stop if we left traveling state, or if the tab is hidden.
+      // `document.hidden` is checked per-frame so backgrounding mid-
+      // travel pauses the loop without needing a separate listener
+      // (the loop simply stops re-scheduling itself when hidden).
+      if (!travelingRef.current) {
+        rafId = null;
+        lastFrameTime = null;
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        // Reset lastFrameTime so the next visible frame doesn't apply
+        // a giant delta from the hidden window. This is the "world
+        // waited" semantic the brief asks for.
+        lastFrameTime = null;
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      if (lastFrameTime === null) {
+        lastFrameTime = now;
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const deltaSec = (now - lastFrameTime) / 1000;
+      lastFrameTime = now;
+      const deltaMins = deltaSec * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
+      // Sub-minute deltas are rounded by `advance` (the store rounds
+      // on commit). The cumulative effect over the trip is correct
+      // because we commit per-frame and the store accumulates;
+      // dropping fractional minutes per-frame would lose ~half a
+      // game-minute over a typical leg.
+      if (deltaMins > 0) {
+        useGameClockStore.getState().advance(deltaMins);
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    if (traveling && !reducedMotion) {
+      rafId = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+    // `reducedMotion` is read at effect-mount time (not via ref) — when
+    // the player flips the OS preference mid-session it triggers a
+    // useReducedMotion re-render, and this effect re-runs with the new
+    // value. That's the correct behavior; mid-travel preference flips
+    // are an acceptable seam.
+  }, [traveling, reducedMotion]);
 
   /**
    * Compute the snap-aware camera offset for `panTo`. AGENTS.md §6.3:
@@ -500,10 +693,27 @@ export function LisbonMap() {
       // own spring handles the smooth rotation.
       setFacing(bearing);
 
+      // Compute the leg duration upfront — same value for both paths.
+      // Used by the full-motion path to drive `animate()` and by the
+      // reduced-motion path to compute the jump-cut time advance.
+      const durationMs = travelDurationMs(distKm);
+
       if (reducedMotion) {
         // Reduced-motion path: skip the trail, jump-cut the position,
         // briefly flash `traveling` so the visual state is reachable,
         // then settle. No setInterval, no animate() — pure state flips.
+        //
+        // **M1 PR5 (per brief):** also jump-cut the in-game-time
+        // advance by the leg's full quantum. The rAF loop only runs
+        // under full-motion, so reduced-motion trips would otherwise
+        // not advance the clock at all (a regression from the brief's
+        // intent that travel always burns time). Compute the same
+        // game-minutes the loop would have committed: duration in
+        // seconds × 3 game-minutes/second.
+        const totalGameMins =
+          (durationMs / 1000) * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
+        useGameClockStore.getState().advance(totalGameMins);
+
         setTraveling(true);
         setAvatar(destination);
         // Hold the traveling flag for 200ms (matches §6.5's reduced-
@@ -522,8 +732,6 @@ export function LisbonMap() {
       // render commits both state updates in the same tick).
       setTrail({ start, end: destination, opacity: 1 });
       setTraveling(true);
-
-      const durationMs = travelDurationMs(distKm);
       // animate() returns a controls object with a .then; awaiting it
       // resolves when the animation finishes (or is cancelled). We do
       // *not* try to cancel on unmount in this slice — the LisbonMap
@@ -691,6 +899,114 @@ export function LisbonMap() {
     },
     [panToPoi, selectedPoi],
   );
+
+  /**
+   * Linger button handler. Computes the verb for the currently-selected
+   * POI (must be one we're at, by the drawer's contract) and advances
+   * the game clock by the verb's quantum. The verb's `enabled` flag
+   * gates this — the drawer's button is disabled when `enabled === false`,
+   * but we double-check here so a programmatic invocation (a future
+   * settings shortcut, an a11y power-tool) can't accidentally advance
+   * during night-closure on a non-hostel POI.
+   *
+   * Per the brief: no required animation in PR5; just dispatch the
+   * advance. The visible "slot reel" / cozy clock animation on linger
+   * tap is M5 Whimsy Injector territory.
+   */
+  const handleLinger = useCallback(() => {
+    if (!selectedPoi) return;
+    const verb = lingerVerbFor(selectedPoi.type, epochMinute);
+    if (!verb.enabled) return;
+    useGameClockStore.getState().advance(verb.quantum);
+  }, [selectedPoi, epochMinute]);
+
+  /**
+   * Palette swap on phase change (per ADR-006). When `phaseOf(epochMinute)`
+   * crosses a boundary, fetch the new style JSON and call
+   * `map.setStyle(newStyle, { diff: true })`. Idempotent — calling
+   * `setStyle` with the already-applied style is effectively a no-op,
+   * but we still gate the actual fetch on phase change to avoid an
+   * unnecessary network round-trip per-frame.
+   *
+   * **Reduced-motion contract:** MapLibre's `setStyle` doesn't animate
+   * by default — the swap is instant — so we get reduced-motion
+   * behavior for free. (If a future M5 polish adds a crossfade
+   * overlay, gate that overlay on `prefers-reduced-motion`.)
+   *
+   * **Tile + glyph cache reuse:** `{ diff: true }` only re-applies
+   * properties that changed between the old and new style; tiles and
+   * glyphs are kept in MapLibre's internal caches. Per ADR-006 this is
+   * the load-bearing knob for "blank-flash is minimal."
+   *
+   * The first style is loaded by `useCozyStyle` and handed to the
+   * `<Map>` via `mapStyle`; this effect only handles *subsequent*
+   * phase changes. We track "did we already swap once" via a ref so
+   * the very first phase doesn't trigger a redundant setStyle on top
+   * of the just-mounted style.
+   */
+  const lastAppliedPhaseRef = useRef<Phase | null>(null);
+  useEffect(() => {
+    if (!mapLoaded) return;
+    const map = mapRef.current;
+    if (!map) return;
+    if (lastAppliedPhaseRef.current === null) {
+      // First mount: useCozyStyle's initial fetch already supplied the
+      // right style via the `mapStyle` prop. Just record the phase so
+      // a subsequent change (when phase crosses a boundary) triggers
+      // the diff'd swap.
+      lastAppliedPhaseRef.current = phase;
+      return;
+    }
+    if (lastAppliedPhaseRef.current === phase) return;
+    lastAppliedPhaseRef.current = phase;
+
+    // Fetch the new style and inject the API key. Same shape as
+    // useCozyStyle's effect, but committed via setStyle rather than
+    // React state (so we get the diff'd swap, not a full re-mount).
+    const url = styleUrlForPhase(phase);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          // eslint-disable-next-line no-console
+          console.error(
+            "[lisbon] failed to fetch phase style",
+            url,
+            res.status,
+          );
+          return;
+        }
+        const text = await res.text();
+        const key = process.env.NEXT_PUBLIC_MAPTILER_KEY ?? "";
+        const injected = text.split(KEY_PLACEHOLDER).join(key);
+        const parsed = JSON.parse(injected) as StyleSpecification;
+        if (cancelled) return;
+        // diff: true is the load-bearing knob — re-uses tile + glyph
+        // caches, only re-applies changed paint properties. Idempotent
+        // call (same style object) is a no-op; safe to fire on every
+        // phase tick if a future ADR widens the trigger.
+        //
+        // **react-map-gl wraps `setStyle` out of the public `MapRef`
+        // surface** (it's in their `skipMethods` list — calling it
+        // through the wrapper "may break the react binding"). The
+        // documented escape hatch is `MapRef.getMap()` which returns
+        // the underlying MapLibre `Map` instance with the full
+        // imperative API. setStyle on the raw map is correct here:
+        // we want to bypass react-map-gl's reconciliation because the
+        // diff'd swap is the whole point — going through the wrapper's
+        // `mapStyle` prop would re-mount the style instead of
+        // diffing.
+        map.getMap().setStyle(parsed, { diff: true });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[lisbon] phase setStyle failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, mapLoaded]);
 
   // Memoized GeoJSON for the trail. react-map-gl's `<Source>` accepts a
   // raw object; the memoization keeps the source stable across renders
@@ -935,6 +1251,15 @@ export function LisbonMap() {
       ) : null}
 
       {/*
+       * Time-of-day clock (M1 PR5). Top-left, safe-area-aware, paired
+       * with the RecenterButton on top-right. Subscribes to the Zustand
+       * game-clock store and renders HH:MM · day N. M1 PR5 ships this
+       * as a placeholder visual; UI Designer's next slice replaces with
+       * the cozy slot-reel/Fraunces treatment.
+       */}
+      <TimeOfDayClock />
+
+      {/*
        * Recenter button (§7.1 "tap 'recenter' to return"). Top-right,
        * safe-area-aware. Hidden during fast-travel — the camera is
        * already focused on the avatar's trip, a recenter affordance
@@ -1009,6 +1334,16 @@ export function LisbonMap() {
         onTravel={
           selectedPoi ? () => void handleTravelTo(selectedPoi) : undefined
         }
+        // Linger verb (M1 PR5). Computed from the selected POI's type +
+        // current game-clock value. Per ADR-005 the verb is a pure
+        // derivation, recomputed every render — cheap, no memoization
+        // needed for 5 POIs and a handful of branches.
+        lingerVerb={
+          selectedPoi
+            ? lingerVerbFor(selectedPoi.type, epochMinute)
+            : undefined
+        }
+        onLinger={handleLinger}
       />
     </main>
   );

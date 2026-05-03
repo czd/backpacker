@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "Backpacker — Cozy Dark",
+  "name": "Backpacker — Cozy Night",
   "sources": {
     "maptiler_planet": {
       "url": "https://api.maptiler.com/tiles/v3/tiles.json?key=__MAPTILER_KEY__",
@@ -5055,7 +5055,7 @@
         }
       ]
     },
-    "backpacker:variant": "dark",
+    "backpacker:variant": "night",
     "backpacker:generated-from": "maptiler/streets-v2",
     "backpacker:generator": "scripts/generate-map-styles.ts"
   },

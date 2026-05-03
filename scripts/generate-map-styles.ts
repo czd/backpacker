@@ -1,11 +1,19 @@
 #!/usr/bin/env bun
 /**
- * Generates the cozy warm map styles (light + dark pair) consumed by the
- * /lisbon route. Path A from the M1 PR2-second-slice plan: fetch the
- * upstream MapTiler `streets-v2` style, override paint properties to the
- * cozy palette, simplify labels per AGENTS.md §7.1, add a hillshade so
- * Lisbon's topography reads, strip the API key, and write the resulting
- * JSON documents to `public/map-styles/`.
+ * Generates the cozy warm map styles consumed by the /lisbon route. Path A
+ * from the M1 PR2-second-slice plan: fetch the upstream MapTiler
+ * `streets-v2` style, override paint properties to the cozy palette,
+ * simplify labels per AGENTS.md §7.1, add a hillshade so Lisbon's
+ * topography reads, strip the API key, and write the resulting JSON
+ * documents to `public/map-styles/`.
+ *
+ * **M1 PR5 (per ADR-006):** the file pair was renamed from
+ * `cozy-{light,dark}.json` to `cozy-{day,night}.json`. The intent is to
+ * extend to four files (`dawn`, `day`, `dusk`, `night`) so the day/night
+ * palette can transition across in-game phase boundaries via
+ * `map.setStyle({ diff: true })`. UI Designer's next slice authors the
+ * dawn/dusk palette tables and re-runs this generator. Until then the
+ * runtime falls back: dawn → day, dusk → night.
  *
  * The committed JSON files are the source of truth at runtime — this
  * script is only re-run when MapTiler updates the upstream schema or we
@@ -14,11 +22,13 @@
  * upstream produces a byte-identical file.
  *
  * Outputs (committed; regenerate via `bun run map-styles:generate`):
- *   - public/map-styles/cozy-light.json
- *   - public/map-styles/cozy-dark.json
+ *   - public/map-styles/cozy-day.json
+ *   - public/map-styles/cozy-night.json
+ *   (- public/map-styles/cozy-dawn.json — UI Designer's next slice)
+ *   (- public/map-styles/cozy-dusk.json — UI Designer's next slice)
  *
  * The runtime (`app/lisbon/lisbon-map.tsx`) fetches one of these JSON
- * files based on `prefers-color-scheme` and injects the MapTiler API
+ * files based on `phaseOf(epochMinute)` and injects the MapTiler API
  * key into the `glyphs` / `sprite` / `sources[].url` placeholders before
  * passing the parsed object as the MapLibre `mapStyle` prop. The
  * placeholder is the literal string `__MAPTILER_KEY__`.
@@ -104,9 +114,9 @@ type Palette = {
   hillshadeAccent: string;
 };
 
-// ---- LIGHT (warm paper) ---------------------------------------------------
+// ---- DAY (warm paper) -----------------------------------------------------
 
-const LIGHT: Palette = {
+const DAY: Palette = {
   // Land — the warm-paper hue from the splash, slightly warmer than the
   // CSS --background token so the map reads as paper next to the UI rather
   // than identical-and-flat. Base / late-zoom paired stops match the
@@ -188,9 +198,9 @@ const LIGHT: Palette = {
   hillshadeAccent: "hsla(35, 22%, 78%, 0.4)",
 };
 
-// ---- DARK (cocoa & cream) -------------------------------------------------
+// ---- NIGHT (cocoa & cream) ------------------------------------------------
 
-const DARK: Palette = {
+const NIGHT: Palette = {
   // Land — cocoa, hue family matched to the CSS --background dark token.
   background: "hsl(28, 12%, 14%)",
 
@@ -920,7 +930,7 @@ function rewriteUrls(
 function buildStyle(
   upstream: Record<string, unknown>,
   palette: Palette,
-  variant: "light" | "dark",
+  variant: "dawn" | "day" | "dusk" | "night",
   hillshadeStrength: number,
 ): Record<string, unknown> {
   // Start from a deep clone — the same upstream is reused for both variants.
@@ -934,7 +944,8 @@ function buildStyle(
 
   // Name + metadata: stamp our brand on it so MapLibre's debug panel /
   // any future style-introspection shows the cozy variant cleanly.
-  style.name = `Backpacker — Cozy ${variant === "light" ? "Light" : "Dark"}`;
+  const titleCase = variant.charAt(0).toUpperCase() + variant.slice(1);
+  style.name = `Backpacker — Cozy ${titleCase}`;
   style.metadata = {
     ...(style.metadata ?? {}),
     "backpacker:variant": variant,
@@ -992,11 +1003,17 @@ async function main() {
 
   // hillshadeStrength is a multiplier on the per-zoom exaggeration curve.
   // 1.0 matches the upstream outdoor-v2 hillshade; we keep it at 1.0 for
-  // light and slightly higher for dark (the cocoa background eats some
+  // day and slightly higher for night (the cocoa background eats some
   // shadow contrast). Tune by feel on a real device.
+  //
+  // Per ADR-006: this slice (M1 PR5) ships only `day` and `night`. UI
+  // Designer's next slice extends the table to four phases by adding
+  // dawn/dusk palette entries. Until they author dawn/dusk, the runtime
+  // falls back: dawn → day, dusk → night (see `useCozyStyle` in
+  // `app/lisbon/lisbon-map.tsx`).
   for (const [variant, palette, hillshadeStrength] of [
-    ["light", LIGHT, 1.0],
-    ["dark", DARK, 1.1],
+    ["day", DAY, 1.0],
+    ["night", NIGHT, 1.1],
   ] as const) {
     const styled = buildStyle(upstream, palette, variant, hillshadeStrength);
     const stripped = rewriteUrls(styled, key);

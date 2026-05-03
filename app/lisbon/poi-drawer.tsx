@@ -184,6 +184,27 @@ export type PoiDrawerProps = {
    * animation; the drawer is just the surface.
    */
   onTravel?: () => void;
+  /**
+   * The linger verb for this POI given the current game-clock state.
+   * Computed by the parent via `lingerVerbFor(poi.type, epochMinute)` —
+   * the parent is the one with subscribe-access to the Zustand store, so
+   * the drawer stays a pure presentational component (easy to test, easy
+   * to render in isolation). When omitted, the linger slot is empty (this
+   * is the M1 PR3-and-earlier shape — so legacy callers continue to work).
+   *
+   * The button is rendered only when `isAtPoi === true` — you can't
+   * linger somewhere you're not. When the avatar is at the POI but the
+   * verb is `enabled: false` (night closure), the button still renders
+   * but is disabled, with the verb's `label` (e.g. "Closed — come back
+   * at 09:00").
+   */
+  lingerVerb?: { label: string; quantum: number; enabled: boolean };
+  /**
+   * Tap handler for the linger button. Fires only when `isAtPoi` is true
+   * AND `lingerVerb.enabled` is true. The parent advances the game clock
+   * by `lingerVerb.quantum` minutes; the drawer is just the surface.
+   */
+  onLinger?: () => void;
 };
 
 type TypePillMeta = {
@@ -211,6 +232,8 @@ export function PoiDrawer({
   activeSnapPoint: activeSnapPointProp,
   isAtPoi = false,
   onTravel,
+  lingerVerb,
+  onLinger,
 }: PoiDrawerProps) {
   const open = poi !== null;
 
@@ -567,6 +590,8 @@ export function PoiDrawer({
             poi={poi}
             isAtPoi={isAtPoi}
             onTravel={onTravel}
+            lingerVerb={lingerVerb}
+            onLinger={onLinger}
           />
         ) : null}
       </DrawerContent>
@@ -598,10 +623,14 @@ function PoiDrawerBody({
   poi,
   isAtPoi,
   onTravel,
+  lingerVerb,
+  onLinger,
 }: {
   poi: Poi;
   isAtPoi: boolean;
   onTravel?: () => void;
+  lingerVerb?: { label: string; quantum: number; enabled: boolean };
+  onLinger?: () => void;
 }) {
   const meta = TYPE_PILL_META[poi.type];
   const TypeIcon = meta.icon;
@@ -782,6 +811,41 @@ function PoiDrawerBody({
       >
         {isAtPoi ? "You're here" : "Travel here"}
       </Button>
+
+      {/* Linger button (M1 PR5). Renders only when the avatar is at this
+          POI — you can't linger somewhere you're not. When the verb is
+          `enabled: false` (night closure for non-hostel POIs), the
+          button is disabled and reads "Closed — come back at 09:00";
+          tapping is a no-op. The hostel always shows "Sleep until
+          morning" and is enabled at any phase (the gentle pressure GD's
+          brainstorm endorsed: the city has a rhythm, and the hostel is
+          the always-available night verb).
+
+          `variant="outline"` matches the "You're here" disabled state
+          family (consistent visual rhythm: the linger slot's affordance
+          weight sits below the primary Travel CTA), but with `enabled`
+          true the button IS interactive — `onLinger` advances the
+          clock. The visible animation of the clock on tap is M5 Whimsy
+          Injector territory; M1 PR5 just dispatches the advance and
+          lets the placeholder clock UI re-render.
+
+          M1 PR5 is the placeholder-strings slice (per brief). Narrative
+          Designer + Anthropologist polish wording in M3. */}
+      {isAtPoi && lingerVerb ? (
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          disabled={!lingerVerb.enabled || !onLinger}
+          onClick={lingerVerb.enabled ? onLinger : undefined}
+          className="mt-2 w-full"
+          data-testid="poi-drawer-linger-button"
+          data-enabled={lingerVerb.enabled}
+          data-quantum={lingerVerb.quantum}
+        >
+          {lingerVerb.label}
+        </Button>
+      ) : null}
     </div>
   );
 }
