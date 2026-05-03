@@ -71,7 +71,17 @@ Per AGENTS.md §9.3, must land before the named PR merges:
 - ADR-010 (structured POI availability schema) — Accepted.
 - M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
 
-### Next: dispatch PR2
+### Next: dispatch PR3
+
+PR2 landed (commit `cc0a351`):
+- `usePlayerStore` Zustand slice sibling to `useGameClockStore` per ADR-007 / ADR-008.
+- `walletEurosCentsInternal` (integer cents, baseline 2500) + `rested` (continuous [0, 1], baseline 1.0).
+- Mutators: `chargeWallet` (throws on insufficient — boundary defense for the soft-refusal pattern), `creditWallet`, `setWallet`, `drainRested`, `restoreRested`, `setRested`.
+- Pure derived getters: `wholeEuros(cents)`, `canAfford(cents, amount)`, `restedBand(rested)`.
+- 48 new vitest assertions (suite total 188).
+- `__player` dev/test seam wired on `/lisbon` mount, mirroring `__gameClock`.
+- size-limit: zero-delta on both routes (Zustand already in shared chunk; new code below rounding boundary).
+- No UI wiring in PR2 — foundational only. PR4 (hostel sleep), PR5 (HUD), PR7 (mini-game), PR8 (transit + busking) are the consumers.
 
 PR1 landed (commit `be0bae1`):
 - `size-limit` configured in `.size-limit.cjs` with two route entries (`/` 300 KB, `/lisbon` 400 KB) plus commented placeholders for `/journal/*` (M4) and `/lisbon/jobs/*` (M2 PR7+).
