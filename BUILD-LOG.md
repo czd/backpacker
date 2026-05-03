@@ -12,6 +12,37 @@ Entries flow newest-first.
 
 ---
 
+## 2026-05-03 — M1 PR2 — Map foundation (route + cozy style + gestures)
+
+### Shipped
+`/lisbon` route renders a MapLibre map at center `[-9.140, 38.713]`, zoom 13. Cozy warm vector style + dark-mode pair vendored at `public/map-styles/cozy-{light,dark}.json`. Hillshade preserved for Lisbon's topography. Pinch-zoom and two-finger pan smooth; no accidental page-zoom or pull-to-refresh from inside the map. MapLibre nav controls hidden on touch (pinch is the gesture; explicit zoom buttons are desktop-think). MapTiler API key injected at runtime so the JSON in the repo carries no secrets. ADR-004 proposed (JS budget reframed per route class).
+
+### Highlights from review
+
+- **Path A won for the cozy style: vendor JSON in-repo, key-injected at runtime.** Pixel-level control over land/water/roads/buildings/labels; dark-mode pair at the same shape; deterministic regenerator script (`scripts/generate-map-styles.ts`); 7.5KB gzipped per file. Style document lives in version control alongside the code that uses it — no MapTiler-dashboard dependency for restyling.
+
+- **Hillshade preserved at low opacity using the `igor` method.** Lisbon's Bairro Alto / Baixa / Alfama hill-valley-hill structure is the spatial story the player must feel; flattening it would have been the cozy-but-wrong choice. Exaggeration scaled by zoom; warm-shadow alpha values keep it subtle. STATUS's "topography is a first-class M1 design constraint, not polish" note from the Geographer is honored.
+
+- **Fraunces is not on MapTiler's glyph CDN.** Probed by byte-size: unknown fonts return a fixed 83KB fallback. Real on the CDN: Inter, Roboto, Open Sans, Noto Sans/Serif, PT Serif, Merriweather. Picked **PT Serif** for place labels (closest warm-literary stock) and **Inter** for road labels (matches our app body). Self-hosted Fraunces SDF glyphs are flagged for M5 polish — adds ~6–8 MB of PBFs and a build step; not worth it for M1.
+
+- **Nav control hidden on touch via `:has()` selector.** `@media (pointer: coarse), (hover: none) { .maplibregl-ctrl-group:has(.maplibregl-ctrl-zoom-in) { display: none } }`. Sidesteps the §6.2 44pt-floor problem (default 29×29) without crowding the corner. Pinch-zoom is the brief's mobile gesture vocabulary; explicit zoom buttons on a phone imply pinch isn't enough. Visible on `pointer: fine` for desktop courtesy.
+
+- **`touch-action: none` (not `pan-x pan-y`) on the map container.** The intuitive value would have been `pan-x pan-y` ("the browser handles panning"). That would be wrong: it tells the browser to handle single-finger panning, which means MapLibre never receives the events. `none` means "the browser handles nothing; the element handles all touch." MapLibre's own canvas-container also sets `touch-action: none` internally — our `<main>`-level setting is belt-and-braces ensuring the page doesn't intercept gestures before they reach MapLibre.
+
+- **iOS Safari edge-swipe-back is unmitigated by design.** In standalone PWA mode (the brief's §6.6 target) there's no browser to swipe back to, so the gesture is moot. In browser-tab Safari the leftmost ~20px is "swipe-back territory" — documented inline; not hacked around. §12.5 lists this as a rejection trigger but the brief targets standalone PWA, so it's a documented best-effort limitation.
+
+### Surprises
+
+- **JS bundle is over §6.7's 200 KB ceiling at every route, including pre-MapLibre.** Splash was 262 KB before this PR (Next 16 + React 19 + Convex + next-intl + Base UI is the framework floor); adding MapLibre to `/lisbon` brings that route to 303 KB. The 200 KB target was authored before the stack was locked. **ADR-004 (Proposed)** reframes the budget per route class — splash 270/300, world-layer 350/400 — while keeping the user-facing TTI/LCP/Lighthouse-Performance budgets as the actual gate. Awaiting owner sign-off.
+
+- **MapLibre 5.x silently drops attribution from a vector source with no `tiles`/`url` block** — which is how MapTiler ships `streets-v2`. Without a workaround, our generator would have produced a `maplibregl-attrib-empty` chip and quietly breached MapTiler TOS without a build error. The generator now copies the attribution string onto `maptiler_planet` (the actually-used source). Future MapTiler schema changes would be the failure mode; documented in the generator's code comments.
+
+- **MapLibre hillshade does NOT support `raster-opacity`.** Only `hillshade-exaggeration` and the alpha channels of the three color tokens (`hillshade-shadow-color`, `hillshade-highlight-color`, `hillshade-accent-color`). Burned a few minutes here; the `igor` method's HSL color space handles this gracefully.
+
+- **The `pan-x pan-y` vs `touch-action: none` decision is counter-intuitive.** Worth flagging because every "I'll just allow panning" instinct is wrong for a custom-gesture canvas. MapLibre, Mapbox GL JS, and any other in-canvas gesture system needs `touch-action: none` so the browser doesn't pre-empt multi-touch.
+
+---
+
 ## 2026-05-02 — M1 PR1 — Lisbon POIs (data layer)
 
 ### Shipped

@@ -96,3 +96,72 @@ Practical mapping at M1 (Lisbon):
 - **Per-city extension:** When M2+ adds Tokyo and Marrakech, the policy applies in that culture's conventions. The Anthropologist owns the per-culture naming style.
 - **Documented exception path:** If a future PR proposes a real lodging name (Pensão Londres, Hotel Avenida Palace, etc.), the proposer should: (a) demonstrate the building's cultural-landmark status with sources from that culture; (b) get Anthropologist + Historian sign-off; (c) update this ADR with the precedent. Don't carve exceptions silently.
 
+---
+
+## ADR-004: JS bundle budget reframed per route class
+
+Date: 2026-05-03
+Status: Proposed (awaiting owner sign-off)
+
+### Context
+
+AGENTS.md §6.7 specifies *"JS bundle (initial): under 200KB gzipped"* as one of four performance budgets, alongside TTI < 3s, LCP < 2.5s, and aggressive map-tile caching. Lighthouse mobile is the CI-enforcement mechanism per the same section.
+
+M1 PR2 surfaced an unavoidable conflict: the 200KB target is unreachable for the locked stack at any route, before we ship a single line of game code. Measured (gzipped, First Load JS):
+
+| Route | Pre-MapLibre | Post-MapLibre | Brief target | Brief ceiling implied |
+|---|---|---|---|---|
+| `/` (splash) | ~262 KB | ~268 KB | 200 KB | unmet by ~30%+ |
+| `/lisbon` (map) | n/a | ~303 KB | 200 KB | unmet by ~50% |
+
+The pre-MapLibre splash baseline of ~262 KB is the framework floor: Next.js 16 + React 19 + Convex client + next-intl + Base UI primitives. None of those are removable per AGENTS.md §8 (they are individually locked stack decisions). Tree-shaking each is a small-percent improvement, not a 30% one.
+
+The 200 KB target was authored before the stack was locked and reflects an aspirational static-site number. For a Next.js 16 PWA with real-time data, internationalization, and a vector-tile map, it is not achievable.
+
+The user-facing budgets in §6.7 (TTI < 3s, LCP < 2.5s, Lighthouse Performance ≥ 90) **may still be achievable** because they measure end-user experience, not raw bundle size — modern HTTP/2, aggressive caching, code-splitting, and the §6.7-mandated tile cache do real work. The 200 KB JS line is a means; the user-experience numbers are the ends.
+
+### Decision
+
+Replace AGENTS.md §6.7's monolithic *"JS bundle (initial): under 200KB gzipped"* with a tiered, per-route-class structure. The user-experience budgets (TTI, LCP, Lighthouse score) **stay as-is** — they are the ends and remain non-negotiable.
+
+**Per-route JS budgets (gzipped, First Load JS as reported by `next build`):**
+
+| Route class | Examples | Target | Ceiling | Rationale |
+|---|---|---|---|---|
+| Splash / menu / static | `/`, `/about` (future) | **270 KB** | **300 KB** | Framework floor + project shared chunks. No map, no canvas. |
+| World layer | `/lisbon`, future `/tokyo` etc. | **350 KB** | **400 KB** | Adds MapLibre + react-map-gl (~35–45 KB). Tile-loading itself is not in this budget — it's network, cached per §6.7. |
+| Journal | `/journal/*` (M4) | **300 KB** | **330 KB** | Splash baseline + Framer Motion page-turn physics. |
+| Mini-games (DOM-only) | M2 azulejo, M3 fika | **320 KB** | **360 KB** | Splash + Framer Motion + per-game logic. |
+| Mini-games (Phaser) | post-MVP bicycle delivery | **TBD per game** | n/a | Phaser is ~600KB minified; only loaded when truly needed. Each Phaser route gets its own ADR. |
+
+**User-experience budgets (unchanged from §6.7):**
+- Time to Interactive on mid-range Android (Pixel 5 / Galaxy A54 on 4G): **< 3s**
+- Largest Contentful Paint on same profile: **< 2.5s**
+- Lighthouse Performance score on mobile preset: **≥ 90**
+- Lighthouse PWA score: **≥ 90**
+- Lighthouse Accessibility score: **≥ 95**
+
+These are the measures that matter to players. A route can stay within its JS budget and still fail TTI; a route can blow past its JS budget and still hit TTI thanks to caching and prefetch tuning. The user-experience budgets are the gate; the per-route JS budgets are the early-warning signal.
+
+**CI enforcement:**
+- The existing `lighthouserc.json` already enforces the user-experience budgets on Vercel preview deployments — keep as-is.
+- Add a **`size-limit`** step to the GitHub Actions workflow that asserts each route class against its ceiling. Configuration lives in `package.json` `size-limit` array, one entry per route class, pointing at `.next/static/chunks/*` files matched per route. Regressions block merge per §6.7.
+- The §6.7 line about "200KB initial JS" should be replaced in AGENTS.md with a reference to this ADR. (Done by the orchestrator in the PR that lands this ADR.)
+
+### Consequences
+
+- **The brief is amended via ADR rather than via AGENTS.md edit.** Per §12.1, ADRs are the canonical mechanism for evolving the brief; the brief's update is a small reference pointing here.
+- **Splash currently sits at the target line (268 KB vs 270 KB target).** Any addition to splash JS is a measurable cost. Not a problem now; flag in code review for any future splash-touching PR.
+- **`/lisbon` currently sits well within world-layer budget (303 KB vs 350 KB target, 400 KB ceiling).** PR3 (markers), PR4 (drawer + avatar), PR5 (time-of-day) all add to this route. The 350 KB target gives ~47 KB of headroom for the rest of M1.
+- **Mini-game ceilings are aspirational** — set conservatively before any mini-game has shipped. M2 PR1 (Lisbon azulejo tile-matching) will be the first real test. If the ceiling proves wrong, supersede this ADR.
+- **Phaser routes sit outside this ADR.** Phaser-using mini-games will need their own per-route budget ADR. The brief's §7.3 already gates Phaser to "only when a mini-game truly needs canvas/physics" — that gate now also implies a separate budget conversation.
+- **Tile network traffic is separately budgeted.** Per §6.7, "map tiles are aggressively cached after first visit; revisiting a city should feel instant." MapTiler tiles are bytes-over-network not bytes-of-JS. They affect first-paint TTI but not the JS budget. The next-pwa runtime caching already SWR-caches tiles. M1 PR3+ should not need to revisit tile caching.
+- **If TTI / LCP / Lighthouse scores fail on a real Vercel preview**, the right response is to dig into route-specific causes (font loading, image sizing, render-blocking resources, hydration cost), not to invoke this ADR. The JS budget is a means; the user-experience numbers are the ends.
+
+### Alternatives considered
+
+- **Keep the 200 KB target, accept that every PR fails it.** Defeatist; makes the budget meaningless and the CI signal noise.
+- **Remove a stack component to fit 200 KB.** Each candidate (Convex, next-intl, Base UI/shadcn, Framer Motion, Zustand) is in §8 as a locked decision; removing any individually saves at most ~20 KB and breaks more than the budget.
+- **Code-split aggressively until splash hits 200 KB.** Possible only by deferring framework code, which trades initial-JS for hydration-cost and net hurts TTI.
+- **Rewrite the brief's §6.7 directly without an ADR.** Violates §12.1's ADR discipline; loses the audit trail.
+

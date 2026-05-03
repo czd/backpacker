@@ -4,6 +4,55 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M1 PR2 (Map foundation)
+
+### Active milestone
+**M1** — branch `feat/m1-lisbon-map`. PR1 (data layer) and PR2 (map foundation) both done on the branch. PR3 (POI markers from query) up next.
+
+### Done this session (M1 PR2)
+- `/lisbon` route + MapLibre via `react-map-gl/maplibre` (`d81a0c3`). Map at center `[-9.140, 38.713]` zoom 13 framing the central cluster. POI query (`useQuery(api.pois.getPoisByCity, { city: "lisbon" })`) wired but markers deferred to PR3. Splash button now Next-Links to `/lisbon` with `prefetch={false}` so the splash doesn't pay for /lisbon chunks until tap.
+- Cozy warm map style + dark-mode pair vendored at `public/map-styles/cozy-{light,dark}.json` (`9d3c730`). Hillshade preserved for Lisbon's topography (per Geographer flag). PT Serif place labels + Inter road labels (Fraunces not on MapTiler's CDN — flagged for M5). `__MAPTILER_KEY__` placeholder convention so JSON in repo has no secrets. Generator script `scripts/generate-map-styles.ts` for reproducibility.
+- Gesture mitigation, safe areas, 44pt nav-control fix (`ee69876`). `touch-action: none` on map container. `overscroll-behavior: none` on `html` and `body`. MapLibre nav control hidden on `pointer: coarse` (pinch is the mobile gesture; visible on desktop). Attribution chip respects `pb-safe pr-safe`. iOS swipe-back-edge documented as standalone-mode-only; not hacked around.
+- ADR-004 **Proposed** — JS bundle budget reframed per route class. Splash currently 268KB, `/lisbon` 303KB. Pre-MapLibre splash was already 262KB (framework floor: Next16 + React19 + Convex + next-intl + Base UI). 200KB target was unreachable for the locked stack. Proposed: splash 270/300, world-layer 350/400, with TTI/LCP/Lighthouse-Performance staying as the user-facing gate. **Awaiting owner sign-off** before AGENTS.md §6.7 is updated.
+
+### Blocked on owner
+
+**Decisions:**
+1. **ADR-004 sign-off** (or rejection / amendment). Without a budget reframe, every M1+ PR fails §6.7 by construction. Read `DECISIONS.md` ADR-004 and tell me Accept / Modify / Reject.
+
+**Owner manual gates from M0 still pending:**
+- Vercel connect + `NEXT_PUBLIC_CONVEX_URL` env var
+- Real-phone install + portrait screen recording
+- Lighthouse mobile against deployed production URL
+- `git tag m0-done && git push --tags`
+
+### Cross-cutting flags from M1 PR2
+
+**For PR3 (POI markers):**
+- `<main>` is now the gesture root with `touch-action: none`. Absolutely-positioned children (markers, drawer trigger zones, future top/bottom bars) inherit the gesture-suppression. Children that need page-scroll behavior must opt in with `touch-action: auto` (or `pan-y`).
+- Decorative absolute-positioned overlays drawn on top of the canvas will block touch events to MapLibre unless they have `pointer-events: none` (or `pointer-events: auto` only on hit-targets). `react-map-gl/maplibre`'s `<Marker>` handles this correctly; raw absolutely-positioned divs do not.
+- The `data-testid="poi-count"` dev affordance at bottom-left is the only consumer of that corner in production code; it's hidden in production builds.
+- Map background is `#f6f1e6` light / `#2a2520` dark — both identical to splash `--background`. Marker fill should not use the same tone or it'll blend; reach for `--card` or `--primary` family.
+
+**For PR4 (drawer + avatar):**
+- Vaul's drawer manages its own `touch-action` toggling internally. Confirm in PR4 that the drawer's content area doesn't accidentally inherit `none` from `<main>` and break vertical scroll within long POI descriptions.
+- Floating chrome (top bar, bottom bar) uses `pt-safe`/`pb-safe`/`pl-safe`/`pr-safe` utilities, not raw `env(safe-area-inset-*)`.
+- The Drawer scaffolded by shadcn (`components/ui/drawer.tsx`) ships with default `max-h-[80vh]` and `mt-24`. Three snap points (peek ~30 / half ~60 / full ~95 per §6.3) need configuring via Vaul's snap-points API.
+- Avatar fast-travel duration: STATUS's earlier flag — straight-line distance is wrong for Lisbon (90m elevation = 25min walk for a 900m line). Suggest a per-POI travel-cost factor or a `lat-lng-distance + elevation` formula. Game Designer call before PR4.
+
+**For PR5 (time-of-day + day/night):**
+- Cozy-light/dark are OS-driven. PR5 wants in-game-time-driven palette swap (independent of OS theme). Cleanest path: add `cozy-night.json` (warm-paper hue + deep blue water + lit-window glints — *not* the dark palette since at 22:00 game-time the OS may still be light) and have `lisbon-map.tsx` accept `palette: "auto" | "light" | "dark" | "night"` prop. The generator's `LIGHT`/`DARK` palette tables are designed to make a third trivial.
+- Style swap on prop change has a brief blank-flash. M5 polish (Whimsy Injector) can add a cross-fade.
+
+**For M5 polish (graduated):**
+- Self-host Fraunces + Inter SDF glyph stacks for the map. Tools: `font-maker` from MapTiler or `node-fontnik`. Adds ~6–8 MB of PBFs to `/public` and a build step.
+- Hillshade strength (1.0× light, 1.1× dark) — owner should eyeball on a real device; tuneable in `scripts/generate-map-styles.ts`.
+
+### Next session
+M1 PR3: POI markers from query, type-distinct iconography (44px+, distinct per `hostel`/`transit`/`view`/`sight`/`market`), tap routing into a placeholder drawer. Frontend Developer + UI Designer.
+
+---
+
 ## 2026-05-02 — M1 PR1 (Convex POI schema + Lisbon seed)
 
 ### Active milestone
