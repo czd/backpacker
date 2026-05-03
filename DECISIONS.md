@@ -268,5 +268,282 @@ Reduced-motion contract: phase transitions under `prefers-reduced-motion` are ju
 - **CSS-driven approach** (color tokens swap via `prefers-color-scheme` + extended phase media queries). Doesn't work — MapLibre paints to canvas, not DOM.
 - **Two phases only (day/night) with discrete swap.** Loses dawn/dusk as cozy moments. Pillars #2, #3, #7 all benefit from the four-phase richness; cost is one extra JSON per side.
 
+---
+
+## ADR-007: M2 player-state slice and economy calibration
+
+Date: 2026-05-03
+Status: Accepted (owner sign-off 2026-05-03 following Game Designer M2 brainstorm)
+
+### Context
+
+M2 introduces money + paid transit + hostel-sleep-as-real-cost + rested-ness as a tracked state. Per AGENTS.md §5.2 ("near-empty wallet... going to zero is *not* a fail state... busking is always available") and §5.3 ("single soft 'rested' indicator"), the economy is gentle but real. The Game Designer's M2 brainstorm produced the calibration; this ADR captures the player-state shape, the currency model, the paid-transit values, and the explicit M4 revisit hook.
+
+### Decision
+
+**Player state lives in a Zustand store** (`usePlayerStore`, sibling to `useGameClockStore`):
+
+```ts
+type PlayerState = {
+  walletEurosCentsInternal: number;  // 2500 = €25.00
+  rested: number;                     // 0.0–1.0; see ADR-008
+  // mutators
+  chargeWallet: (cents: number) => void;
+  creditWallet: (cents: number) => void;
+  setWallet: (cents: number) => void;
+  // rested mutators in ADR-008
+};
+```
+
+Pure derived getters surface display-friendly values:
+- `wholeEuros(cents) = Math.floor(cents / 100)` — the rounded-down whole-Euro number for HUD display
+- `canAfford(cents, amount)` — pure boolean check
+
+**Currency model:**
+- Internal precision: cents (integer). Internal arithmetic never loses precision.
+- Display: whole Euros, rounded down. €25.00 → "€25"; €23.20 → "€23"; €1.80 → "€1".
+- Floor: wallet caps at 0 cents. Any operation that would make it negative is gated by a soft refusal at the action site.
+- Soft-refusal pattern: when the player can't afford an action, the action button reads `Need €X — try busking?` and tap deep-links to the busking POI on the map. This is the §5.2 safety net realized.
+
+**M2 starting wallet: €25 (2500 cents).** Owner explicitly signed off on this for M2 single-city economy; explicit deferral of multi-city travel-arc calibration to M4 (see Consequences).
+
+**Hostel night cost: €18 (1800 cents).** The Pensão Estrela do Tejo "Sleep until morning" linger verb (M1 PR5) charges this on commit; restores rested to 1.0 (per ADR-008).
+
+**Paid transit values (M2 ship):**
+
+| Mode | Real time (airport→Baixa, ~6.4km) | Game time | Cost (cents) | Rested drain |
+|---|---|---|---|---|
+| Walk | ~19s (4 game-min/real-sec) | ~76 g-min | 0 | drains (per ADR-008) |
+| Metro | ~3s real | ~20 g-min | 180 | 0 (rest-neutral) |
+| Taxi | ~1s real | ~10 g-min | 1800 | 0 (rest-neutral) |
+
+**Per-leg purchase, no day-pass.** The day-pass option (transit-mode toggle) was rejected for adding planning-loop complexity violating pillar 2 (calm beats clever).
+
+**Display rules:**
+- For short Baixa hops (~0.6–1.0 km, under ~14 game-min walking), show only walk button. Metro overhead doesn't beat walking; clutters the drawer.
+- For mid-distance / airport-distance legs, show walk + metro. Taxi only at airport in M2 scope.
+
+**The rest-neutrality of metro/taxi is load-bearing.** Walking drains rested-ness gently; paid transit doesn't. This is what makes paid transit "buy back the day" — saves time AND saves fatigue. If both walked and rode drained rested-ness equally, the only signal would be wallet, and the cozy "I'm tired, let me just get there" beat wouldn't land.
+
+### Consequences
+
+- **M4 revisit hook (explicit).** The €25 starting wallet, €18 hostel, and €15 mini-game pay (per ADR-009) are calibrated against single-city M2 economy. **Multi-city travel-arc calibration is deferred to M4 prep**, when flight costs are designed alongside more job opportunities and city-specific income/cost gradients (Tokyo more expensive but jobs pay more, etc.). The M4 brainstorm should re-examine starting wallet, income rates, and flight prices as a coherent system rather than tuning any single number in isolation. The original 1995 *Backpacker* started high because flight-cost-resource-management was its core mechanic; our cozy version (§3 "the *anti*-version of that") gets to make different starting choices but only when the destination economy is real.
+- **Soft-goal "passport circumnavigation"** (AGENTS.md §15) is the natural M4 design conversation companion. The brief says "decide before M5"; M4 prep is the right time. Worth flagging here so the M4 brainstorm covers wallet calibration AND winning-condition shape together.
+- **`useGameClockStore` already exists.** `usePlayerStore` follows the same pattern (single normalized integer + derived getters; mutators on the store, computations elsewhere). M2 PR2 implements; the rested fields land via ADR-008's data model.
+- **At €25 the busking floor matters from Day 1.** That's actually good — it means the §5.2 safety net is exercised in real-phone playtests rather than shipping untested until M4.
+- **Save state (M2+).** Persisting `usePlayerStore` to Convex is two integers. Trivial. Per ADR-005's discipline: caller (rAF mini-game loops, linger advance) owns fractional accumulation; the store commits whole units only.
+- **Walking drains rested-ness.** Per ADR-008 the drain rate is 1/1440 per game-minute of awake time, and travel time counts as awake. Walking the airport leg drains ~5%; metro/taxi don't.
+- **No negative balances anywhere.** The `chargeWallet` mutator throws (or no-ops with a developer warning) if it would push below 0. Callers must check `canAfford` before calling. UI prevents the unaffordable-action via the soft-refusal pattern; `chargeWallet` defends the boundary.
+
+### Alternatives considered
+
+- **Higher starting wallet (€60+).** Too generous; the economic systems become decorative for the first 2 sessions. Rejects the "near-empty wallet" framing in the brief's first paragraph.
+- **Lower starting wallet (€15 or less).** Forces busking on Day 1; might feel too tight for a hobby-paced game. €25 lands in the "tight but recoverable" zone where systems matter without being punitive.
+- **Day-pass transit mode (`Metro day pass · €6.80` toggle).** Adds a stateful HUD lifecycle and a per-day planning loop. Pillar 2 violation. Defer to a future "I'm a regular here now" expansion if ever wanted.
+- **Full-decimal currency display (€25.00).** Visual noise; the player parses "40.00" not "40." Whole-Euro display is calmer.
+- **Wallet allowed to go negative.** Tempting (debt as cozy?) but introduces an accounting layer the cozy ethos doesn't need. The soft-refusal pattern is gentler.
+
+---
+
+## ADR-008: Rested-ness — continuous internal value, three rendered bands
+
+Date: 2026-05-03
+Status: Accepted (owner sign-off 2026-05-03)
+
+### Context
+
+AGENTS.md §5.3 specifies a "single soft 'rested' indicator" that affects mini-games and NPC dialogue. AGENTS.md §12.4 forbids "numerical 'completion %' anywhere visible to the player" — rested-ness is a stat by *function* but must never *look* like one. The cozy challenge is to make sleep meaningful (so the systems matter) while keeping rested-ness from becoming a Tamagotchi-style stat-management mini-game.
+
+### Decision
+
+**Internal: continuous `rested` ∈ [0, 1]** in `usePlayerStore` (per ADR-007). Pure derived getter `restedBand(rested) → "fresh" | "flagging" | "tired"`:
+
+| Band | Range | HUD signal |
+|---|---|---|
+| `fresh` | 0.66 ≤ rested ≤ 1.00 | None — default state |
+| `flagging` | 0.33 ≤ rested < 0.66 | None — ambient avatar pulse slowdown only |
+| `tired` | 0.00 ≤ rested < 0.33 | Small `Moon` icon next to wallet in HUD; tap → toast "You should sleep soon" |
+
+**Drain rates:**
+- **Default (passage of time):** 1/1440 per game-minute of awake time. Walking 76 game-min drains ~5%. From `rested = 1.0` to `0.0` requires 24h game-time awake.
+- **Mini-game (azulejo, per ADR-009):** 0.05 flat per completed session.
+- **Busking (per ADR-007 / M2 PR8):** 0.02 flat per completed session.
+- **Metro / taxi:** 0 (rest-neutral; see ADR-007).
+- **Sleeping at hostel:** restores to 1.0 (clean reset, regardless of partial-sleep duration). The `Sleep until morning` linger verb advances to next 06:00 and resets rested.
+
+**Felt-not-seen effects:**
+- **Mini-game (azulejo) snap tolerance:** 12px (fresh) → 10px (flagging) → 8px (tired). Tiles are slightly fussier when tired; never a wall.
+- **Mini-game hint pulse:** 600ms cycle (fresh) → 800ms (flagging) → only on the first tile (tired). Game still completable; just less generous.
+- **Avatar pulse cycle:** 1.6s (fresh) → 1.8s (flagging) → 2.0s (tired). Subtle visual cue. UI Designer slice in M5 polish; M2 ships the data so the future polish has something to read.
+- **NPC dialogue (M3):** authored in M3, but the contract is "tired band offers one fewer dialogue branch." Captured here so M3 design knows the constraint.
+
+**Pillar-5 vow: never punish.** The mini-game is always completable. Tired band makes things 10s longer on average, never blocked. NPCs offer fewer branches but always offer at least one. The player can play indefinitely without sleeping; they just notice the world reading muted.
+
+### Consequences
+
+- **No palette modifier in M2.** The four-phase palette (ADR-006) is the visual canon for in-game time. Layering rested-ness on top of phase would compound complexity and is M5 polish only if needed.
+- **No HUD bar, no percentage, no completion ring.** §12.4 honored. The Moon icon in the tired band is a single ambient signal, not a continuous gauge.
+- **Sleep is the canonical restoration.** M2 ships hostel-sleep-only. M3+ may add park-bench dozing, miradouro-at-night sitting, couch-surf NPC crashing — each with their own restore amount + linger duration.
+- **Tested via real-phone playtest.** The "marginally harder" effect is hard to verify without playing fresh-vs-tired sessions side-by-side. Real-phone discipline from M1 carries forward.
+- **Drain rate 1/1440 means a hobbyist player who plays 2–3 sessions a day naturally hits the tired band on day 2–3 if they don't sleep.** That's the right rhythm — sleeping becomes a meaningful in-game beat without being mandatory.
+
+### Alternatives considered
+
+- **Three discrete states (no continuous internal value).** Simpler implementation but the "marginal" effect is hard to do tonally with discrete steps; feels like a wall. Rejected.
+- **Continuous internal, ambient cues only (no HUD signal even in tired band).** Most cozy but the player who never sleeps may not connect the world's vibe to the mechanic, and sleep doesn't read as a fix. The single Moon icon at the tired threshold is the lightest possible legibility cue.
+- **Numerical HUD (rested: 67%).** Direct §12.4 violation.
+- **Visible gauge / bar.** Same — anti-cozy, anti-pillar-2.
+
+---
+
+## ADR-009: Mini-game failure semantics — leave-button + soft-break-prompt
+
+Date: 2026-05-03
+Status: Accepted (owner sign-off 2026-05-03)
+
+### Context
+
+AGENTS.md §13 M2 DoD: *"Completing the job pays money. Failing it costs nothing."* §7.3: *"Mini-games are short (60–120 seconds), forgiving (no permanent fail), and flavor-rich."* §6.3: *"Mini-games: full-screen takeover. A small 'leave' button in the safe-area top-left. Leaving abandons the job with no penalty."*
+
+The M2 azulejo mini-game (per ADR — separate, see PR7 dispatch) needs a concrete failure model. This ADR captures it in a way that **generalizes to all future mini-games** (Tokyo sushi, Marrakech spice, Stockholm fika, Amsterdam bicycle, etc. per §7.3).
+
+### Decision
+
+**No permanent fail state. Ever.** The mini-game cannot be "lost"; it can only be left.
+
+**Leave-button:**
+- Position: safe-area top-left of the mini-game viewport (per §6.3 mini-game rule).
+- Tap target: 44×44 minimum (per §6.2).
+- Visible at all times during the mini-game.
+- Tap behavior: confirms with a brief inline prompt (no modal interrupt — that's anti-cozy). E.g., "Leave the panel? · Stay · Leave." Tapping Leave dismisses the mini-game; time advances by elapsed real-time × the linger advance rate (per ADR-005's amendment, the mini-game owns the fractional accumulator); pay is €0; no rested-ness penalty beyond what time-elapsed naturally drained.
+
+**Soft "take a break?" prompt at 3 real minutes:**
+- The mini-game's own `useEffect` tracks elapsed real-time. At 3 minutes (or whatever the per-mini-game cap chooses), an inline ribbon appears at the top: *"Been a while — take a break? · Stay · Leave."* Same shape as the leave-button confirm.
+- This is not a forced abandon. The player can choose Stay and continue indefinitely.
+- The 3-minute threshold is the soft cap that signals "this is taking longer than expected" without punishing. Mini-games are designed for 60–120s sessions per §7.3; 3 minutes is 1.5× the upper bound.
+
+**Reward on completion:**
+- Pay arrives at the moment the mini-game's success condition is met (e.g., all 4 azulejo tiles placed correctly).
+- Wallet credit happens via `creditWallet(cents)` per ADR-007.
+- A soft visual beat plays (panel pulse for azulejo; per-mini-game flavor for others) before the mini-game dismisses.
+- No score, no XP, no streak. The pay is the outcome.
+
+**Generalization:** every M2+ mini-game inherits this failure shape. Tokyo sushi, Marrakech spice-blending, Stockholm fika-hosting, Amsterdam bicycle delivery — all use:
+1. Leave-button top-left.
+2. Soft break-prompt at the per-game soft cap (typically 3 real min).
+3. No fail state; only Leave (€0) or Complete (full pay).
+4. Optional success-pay beat before dismissal.
+
+If any future mini-game wants different shape (e.g., a job that pays *partial* completion proportional to progress), it must justify in a superseding ADR. Default is "binary: complete or leave."
+
+### Consequences
+
+- **Player time is sacred (pillar 5) is enforced structurally.** The mini-game can be left at any point with no cost.
+- **Soft cap is the only signal that "this is taking long."** No timer countdown. No "hurry!" prompt. The world waits.
+- **Calm beats clever (pillar 2).** No multi-stage failure recovery, no "almost there!" bargaining, no consolation prizes.
+- **Per-mini-game tuning lives in the mini-game**, not in this ADR. Snap tolerances (azulejo per ADR-008), success conditions, pay amounts are per-game decisions.
+- **No leaderboard, no time-attack, no score** — by structural prohibition. §12.4 forbids social comparison; this ADR makes that prohibition load-bearing in the mini-game architecture.
+
+### Alternatives considered
+
+- **Time-pressure mode / countdown.** Direct anti-§5 (player time is sacred). Not even considered seriously.
+- **Partial-completion partial-pay.** Tempting (more realistic) but adds tuning complexity for marginal gain. The binary "complete or leave" is calmer.
+- **Hidden success criteria ("you got 3 stars").** Anti-§12.4 (numerical completion %) — even hidden as stars or stamps. Stamps for visited *cities* (Passport in §7.4) are different — they're location markers, not performance scores.
+
+---
+
+## ADR-010: Structured POI availability schema
+
+Date: 2026-05-03
+Status: Accepted (owner sign-off 2026-05-03)
+
+### Context
+
+M1 PR5-fixup-2 hardcoded `ALWAYS_OPEN_TYPES = {transit, view}` in `linger-verbs.ts` to keep the airport / miradouro coherent with their "Open 24h" prose. M1 GD review queued this as M2 work: replace the type-blanket rule with a structured `availability` field on the Convex POI document.
+
+M2 PR8 introduces Largo do Carmo (busking POI) which has 06:00–22:00 hours — neither always-open (transit/view) nor closed-at-night (sight/market). The hardcoded type rule can't express this; structured data must.
+
+### Decision
+
+**Add an `availability` field to the `pois` Convex schema** as an optional structured value:
+
+```ts
+// In convex/schema.ts:
+availability: v.optional(
+  v.object({
+    // Days of the week this POI is open. If absent, all days.
+    days: v.optional(
+      v.array(
+        v.union(
+          v.literal("mon"), v.literal("tue"), v.literal("wed"),
+          v.literal("thu"), v.literal("fri"), v.literal("sat"), v.literal("sun"),
+        ),
+      ),
+    ),
+    // Open/close ranges in minutes-of-day. e.g. [{ open: 360, close: 1320 }] = 06:00–22:00.
+    // Multiple ranges allowed for split hours (e.g. lunch closure).
+    ranges: v.array(
+      v.object({
+        open: v.number(),  // 0–1439 (minute of day)
+        close: v.number(), // 0–1439; if close < open, range wraps midnight
+      }),
+    ),
+    // Optional seasonal variant — applies a different ranges set during the season.
+    // Months are 1–12 (Jan = 1). Both endpoints inclusive.
+    seasonal: v.optional(
+      v.object({
+        startMonth: v.number(),
+        endMonth: v.number(),
+        ranges: v.array(v.object({ open: v.number(), close: v.number() })),
+      }),
+    ),
+  }),
+),
+```
+
+**Open-now check is a pure function** of `availability` + current `epochMinute`:
+
+```ts
+function isOpenNow(availability, epochMinute, monthOfYear): boolean
+```
+
+If `availability` is absent on a POI, the POI is **always open** (24/7). This default matches the existing transit / view semantics without requiring a schema migration of the M1 seed.
+
+**Migration of existing seeded POIs (Lisbon):**
+
+| Slug | Availability |
+|---|---|
+| `lisbon-baixa-hostel` | absent (always open: hostel) |
+| `lisbon-aeroporto` | absent (always open: 24h transit) |
+| `miradouro-de-santa-catarina` | absent (always open: public space) |
+| `castelo-de-sao-jorge` | `{ ranges: [{ open: 540, close: 1260 }] }` (09:00–21:00, summer); seasonal Nov–Feb to `[{ open: 540, close: 1080 }]` (09:00–18:00). Months 11–2 inclusive (note: wraps year — see Consequences). |
+| `mercado-da-ribeira` | `{ ranges: [{ open: 600, close: 1440 }] }` (10:00–24:00 base); per the seeded prose, Thu–Sat extends to 01:00 next day — initial M2 seed uses the simple base; refined per Anthropologist + Historian if needed. |
+
+**New M2 POI:**
+
+| Slug | Availability |
+|---|---|
+| `largo-do-carmo` | `{ ranges: [{ open: 360, close: 1320 }] }` (06:00–22:00 — the busking-allowed window per Anthropologist convention review at PR8) |
+
+**`linger-verbs.ts` rewrite:** the night-closure logic moves from `ALWAYS_OPEN_TYPES.has(type)` to `isOpenNow(poi.availability, epochMinute, monthOfYear)`. Hostel keeps its always-available Sleep verb regardless of `isOpenNow` (sleep is what nights are for; that's a per-type rule, not an availability rule).
+
+### Consequences
+
+- **`ALWAYS_OPEN_TYPES` placeholder retired.** The hardcoded set in `linger-verbs.ts` is replaced by data-driven per-POI availability.
+- **Castle's Mar–Oct vs Nov–Feb hours surface honestly** for the first time. The seeded prose said it; the M1 logic ignored it; now both agree.
+- **Year-wrap in seasonal months handled via a small modulo trick** in `isOpenNow`: if `startMonth > endMonth` (e.g., Nov–Feb wraps Dec/Jan), the season is `month >= startMonth || month <= endMonth`. Alternative would have been "split into two seasons" but the wrap is clearer.
+- **`monthOfYear` derivation:** the game clock currently knows `epochMinute` and `dayOf(em)`. It does NOT know "month" because the in-game calendar is abstract (no real date attached). For M2, derive month from a fixed mapping: assume the player's arrival is "the start of an in-game year"; one in-game year = 365 days; month-of-year = `Math.floor(((dayOf(em) - 1) % 365) / 30.4) + 1`. **Acknowledged abstraction.** The castle's seasonal hours are the only consumer of month-of-year in M2; if month-of-year ever needs to drive narrative beats, a richer calendar lands in a superseding ADR.
+- **24/7 default** preserves the M1 seed semantics without requiring a migration. Existing transit/view POIs get the right behavior for free.
+- **Cultural-content fidelity** improves: the Mercado da Ribeira's Thu–Sat extended hours (per the seeded prose) become a structured-data future-refinement opportunity rather than a prose-vs-logic mismatch.
+- **Future POIs (Tokyo / Marrakech)** inherit this schema directly. Tokyo's *kissaten* coffee shops with 11:00–17:00 hours, Marrakech's souks closed during Friday Jumu'ah prayer — all expressible.
+
+### Alternatives considered
+
+- **Free-form `openHoursStructured` parsed from the existing `openHours` prose.** Brittle (different city formats; localization breaks parsing). Rejected.
+- **Separate Convex table for hours.** Over-engineered for ~5–30 POIs per city; one optional field on the pois doc is the right grain.
+- **Type-driven hours (extend `ALWAYS_OPEN_TYPES` to a per-type-default-hours map).** Brittle when POIs of the same type have different hours (a hotel that closes its bar at 22:00 is still a hotel). Per-POI is correct.
+
+
+
 
 

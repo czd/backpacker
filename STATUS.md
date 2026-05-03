@@ -4,6 +4,126 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-03 — M2 brainstorm complete; ADRs 007–010 Accepted
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`. Game Designer brainstorm landed; all 14 open questions resolved; four ADRs accepted; ready to dispatch PR1.
+
+### Accepted M2 calibration (per ADRs 007–010)
+
+**Wallet + economy (ADR-007):**
+- Starting wallet: **€25** (single-city M2 calibration; M4 revisit hook captured)
+- Currency display: whole Euros, cents internal, rounds down, floors at €0
+- Hostel night: €18 (restores rested to 1.0)
+- Mini-game pay (azulejo): €15 per session
+- Soft-refusal pattern: when broke, the action button reads `Need €X — try busking?` and deep-links to Largo do Carmo
+- Paid transit (per-leg, no day-pass):
+  - Walk — 4 game-min/real-sec, free, drains rested
+  - Metro — ~3s real / 20 game-min / €1.80 / rest-neutral
+  - Taxi — ~1s real / 10 game-min / €18 / rest-neutral
+- Display rules: short Baixa hops show walk-only (metro overhead doesn't beat walking those distances); airport-distance legs show walk + metro + taxi
+
+**Rested-ness (ADR-008):**
+- Continuous internal `rested` ∈ [0, 1]
+- Three rendered bands: fresh (≥0.66), flagging (0.33–0.66), tired (<0.33)
+- HUD signal: only tired band shows a small Moon icon next to wallet
+- Drain rate: 1/1440 per game-minute of awake time (24h awake → empty)
+- Mini-game effects (felt-not-seen): snap tolerance 12/10/8 px per band; hint pulse 600/800/first-only
+- Avatar pulse cycle: 1.6s/1.8s/2.0s per band (M2 ships data; M5 Whimsy ships visual)
+- Sleep at hostel restores to 1.0 (clean reset)
+
+**Mini-game failure semantics (ADR-009):**
+- Leave-button safe-area top-left, 44pt+
+- No permanent fail state (ever)
+- Soft "take a break?" prompt at 3 real minutes
+- Pattern generalizes to ALL future mini-games (Tokyo sushi, Marrakech spice, etc.)
+- No score, no XP, no streak — pay is the outcome
+
+**Structured POI availability (ADR-010):**
+- Optional `availability` field on Convex `pois` doc with `days` + `ranges` + optional `seasonal`
+- Replaces the hardcoded `ALWAYS_OPEN_TYPES = {transit, view}` placeholder from M1 PR5-fixup-2
+- 24/7 default when field is absent (preserves M1 seed semantics, no migration cost)
+- Castle Mar–Oct (09:00–21:00) vs Nov–Feb (09:00–18:00) honored honestly for the first time
+- Largo do Carmo (M2 PR8): 06:00–22:00 (busking-allowed window per Anthropologist convention review)
+
+### M4 revisit hook (explicit)
+
+Owner explicitly deferred the multi-city travel-arc calibration to M4 prep:
+
+- **The €25 starting wallet, €18 hostel, €15 mini-game pay numbers are calibrated against single-city M2 economy.** They are NOT calibrated against unknown M4 flight costs.
+- **M4 prep brainstorm must re-examine** starting wallet, income rates, flight prices, and any city-specific income/cost gradients (Tokyo more expensive but jobs pay more, etc.) **as a coherent system** rather than tuning any single number in isolation.
+- **Soft-goal "passport circumnavigation"** (AGENTS.md §15 — *"What does 'winning' look like?"*) is the natural M4 brainstorm companion. Wallet calibration and winning-condition shape get decided together at M4 prep.
+- The original 1995 *Backpacker* started high because flight-cost-resource-management was its core mechanic; the cozy version (§3 "the *anti*-version of that") makes different starting choices but only when the destination economy is real.
+
+### Cultural-content review hooks queued for M2
+
+Per AGENTS.md §9.3, must land before the named PR merges:
+
+- **PR4 (hostel sleep + rested-ness):** Anthropologist sanity check on €18 dorm-bed price for the fictional Pensão Estrela do Tejo. Quick non-blocking check.
+- **PR7 (azulejo mini-game):** Anthropologist (panel pattern selection — polychrome MUST ship per M1 PR1 flag; no Pena-gift-shop tile aesthetic; workshop framing avoidance of "Moroccan-bazaar" register) + Historian (workshop framing accuracy; Madre de Deus convent vs Alfama master tradeoff; *Reabilitação Urbana* movement as anchor) + UI Designer (panel imagery in cozy palette family; mortar/wear/imperfection respected).
+- **PR8 (busking POI + paid transit):** Anthropologist (Lisboeta busking conventions — Largo do Carmo as appropriate; payout-language register; quieter-at-night norms) + Historian (Largo do Carmo description must include 1755-earthquake anchor; the Carmo ruins as the 1755 memorial) + Geographer (Largo do Carmo coordinate verification before seed insertion).
+
+### Done this session
+- M2 brainstorm with Game Designer (all 14 open questions resolved).
+- ADR-007 (player-state slice + economy calibration) — Accepted.
+- ADR-008 (rested-ness data model + three-band rendering) — Accepted.
+- ADR-009 (mini-game failure semantics — leave button + soft break prompt; pattern generalizes) — Accepted.
+- ADR-010 (structured POI availability schema) — Accepted.
+- M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
+
+### Next: dispatch PR1
+
+Ready to dispatch the M2 PR1 chore: `size-limit` enforcement to pin the bundle measurement methodology before mini-game work adds bytes. Per ADR-004's CI enforcement clause; per the M1 GD review's M2 prep order.
+
+---
+
+## 2026-05-03 — M1 merged to main; M2 branch open
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`, just opened from `main` (which is now at `2a6e5f1` and includes all M1 work). No M2 code yet — this entry marks the milestone start point.
+
+**Tags landed:**
+- `m0-done` at `c303a7a` — last M0 commit on main before M1 branched
+- `m1-done` at `4965ea6` — GD review approved; the five post-tag M1 polish commits (Convex bindings, perf, avatar z-order) are merged but post-date the tag
+
+**Branches cleaned:** `feat/m1-lisbon-map` deleted local + remote. Standard one-milestone-per-branch shape from now on.
+
+**Vercel:** push to main triggered the prod deploy; M1 should be live on the prod URL within a few minutes.
+
+### M2 DoD recap (per AGENTS.md §13)
+
+- Hostel POI lets you sleep; advances time; restores rested-ness
+- HUD top bar shows wallet (local currency) and time of day; respects safe-area top inset
+- One mini-game (Lisbon azulejo tile-matching, plain React + Framer Motion + drag)
+- The mini-game uses **drag**, not click — designed for thumbs
+- Completing the job pays money. Failing it costs nothing.
+- "You're broke" path: a busking POI gives you a tiny payout for free
+- The mini-game is fully playable on a 360px-wide screen with no horizontal scroll
+
+### M2 prep order (per GD review's M2 carry-forward notes)
+
+Five things the GD review specifically queued for M2, in suggested order:
+
+1. **`size-limit` chore PR** — pin the bundle measurement methodology before mini-games add bytes. The drift between PR3-PR5 measurements (211 KB vs 273 KB on the same code) is meaningful and should stop. Should land first.
+2. **Player-state Zustand slice extraction** — `LisbonMap` has ~13 distinct `useState` + refs; M2 wallet + rested-ness + save-state will push it past the legibility ceiling. Follow the `game-clock-store.ts` template established in M1.
+3. **Structured `availability` field on Convex POI document** — replaces the `ALWAYS_OPEN_TYPES = {transit, view}` placeholder. Open/close ranges per day, possibly seasonal for places like Castelo de São Jorge.
+4. **Walking-vs-paid-transit calibration session** — at 4 game-min/real-sec walking, paid transit's value gradient is M2's calibration deliverable. Don't ship M2 mini-game without this conversation. Brainstorming territory.
+5. **Mini-game shared helper extraction** — the rAF + accumulator + `document.hidden` gate pattern from M1's travel + linger loops is reusable; document as a shared helper before M2 PR2 forks it. The job mini-game is a "longer linger that pays" — fit the existing pattern, do not invent a parallel one.
+
+### Cross-cutting from M1 still relevant
+
+- **ADR-005 amendment landed** — caller owns fractional accumulator; store commits whole minutes only.
+- **Real-phone testing discipline** is doing real work — surfaced 6+ bugs across M1 fixup rounds that headless e2e + dev-tools emulation didn't catch. Continue applying to M2.
+- **Lighthouse Mobile emulation is pessimistic** — `/lisbon` scores ~67–80 in emulation but real-iPhone-on-WiFi is the actually-meaningful number per pillar #1. Don't treat the emulation score as a ship gate beyond what makes user-facing TTI < 3s and LCP < 2.5s honestly.
+
+### Blocked on owner / next decision
+
+**M2 opening move:** the GD review's queued order suggests `size-limit` chore first, then player-state Zustand extraction. But before any of that, the brief's superpowers:brainstorming discipline says: **brainstorm M2's mechanic shape with the Game Designer first.** Specifically the walking-vs-paid-transit calibration, the wallet/rested-ness loops, and the azulejo mini-game's drag mechanic + failure model. That conversation produces the design context that shapes everything else.
+
+Ready to dispatch GD for the M2 design brainstorm when owner confirms.
+
+---
+
 ## 2026-05-03 — M1 milestone review — **APPROVED (non-blocking notes)**
 
 ### Active milestone
