@@ -21,7 +21,13 @@ const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   display: "swap",
-  axes: ["opsz", "SOFT", "WONK"],
+  // Only opsz is exercised in M0/M1 type usage. SOFT and WONK were
+  // loaded speculatively in PR2 ("just in case") but never referenced
+  // in any class. Trimming them shaves bytes off the Fraunces variable-
+  // font file, which loads on every page (splash + /lisbon both use
+  // font-heading). Captured as M5 polish in STATUS — promoted forward
+  // to help the /lisbon Lighthouse perf score after real-phone testing.
+  axes: ["opsz"],
 });
 
 const inter = Inter({

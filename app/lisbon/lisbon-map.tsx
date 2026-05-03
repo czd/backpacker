@@ -1350,6 +1350,18 @@ export function LisbonMap() {
             longitude={avatar.lng}
             latitude={avatar.lat}
             anchor="center"
+            // Explicit z-index lifts the avatar above POI markers when
+            // they overlap (e.g. avatar at the airport on first paint,
+            // or after fast-traveling to a POI). Real-phone testing on
+            // iPhone Safari surfaced the avatar as invisible-behind-POI
+            // even though JSX order had the avatar last — Safari's
+            // transform stacking on absolute siblings inside the
+            // maplibre-gl marker container doesn't follow paint-order
+            // reliably. The explicit zIndex forwards through
+            // react-map-gl to the underlying maplibre Marker element
+            // and creates a deterministic stacking context above the
+            // POI markers (default zIndex: auto).
+            style={{ zIndex: 10 }}
           >
             <AvatarMarker traveling={traveling} facing={facing} />
           </Marker>
