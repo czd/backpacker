@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Moon, Sun, Sunrise, Sunset } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 
 import {
   dayOf,
@@ -73,14 +72,14 @@ import {
  * `delta` computation) are the seams Whimsy would extend.
  */
 
-/** Minute-slide animation duration in ms. Per brief: ~120ms. */
-const MINUTE_SLIDE_DURATION_MS = 120;
-
-/** Phase boundary micro-flourish (glyph crossfade) duration in ms. */
+/**
+ * Phase boundary micro-flourish (glyph crossfade) duration in ms.
+ * The phase glyph (Sun / Sunrise / Sunset / Moon) crossfades between
+ * phases on boundary crossing — that animation stays at M1 because it
+ * doesn't depend on absolute-positioned text. The minute-slide
+ * animation is deferred to M5 Whimsy (see the HH:MM block below).
+ */
 const PHASE_FLOURISH_DURATION_MS = 250;
-
-/** Threshold above which discrete advances skip the slide animation. */
-const SLIDE_DELTA_THRESHOLD = 5;
 
 /**
  * Per-phase glyph. Lucide line icons matching the cozy illustration
@@ -146,46 +145,6 @@ export function TimeOfDayClock() {
 
   const hh = String(hour).padStart(2, "0");
   const mm = String(minute).padStart(2, "0");
-
-  // Track the previous epochMinute so we can detect "big jumps" and
-  // fall back to instant-cut rather than animating each minute. The
-  // initial value matches `em` so the first-paint render doesn't
-  // animate from 0 to 870.
-  const prevEmRef = useRef(em);
-  // `instant` controls whether the next render skips the slide. When
-  // a big jump is detected we set this to true for one render cycle,
-  // then reset to false in an effect so subsequent small advances
-  // animate normally again.
-  const [instant, setInstant] = useState(false);
-
-  useEffect(() => {
-    const prev = prevEmRef.current;
-    const delta = em - prev;
-    prevEmRef.current = em;
-    // Big jump (e.g., linger advance of 30/60 min) → skip the slide.
-    // Small jumps (≤ 5 min, typical of the rAF travel loop committing
-    // a single minute) → let it slide naturally.
-    if (delta > SLIDE_DELTA_THRESHOLD) {
-      setInstant(true);
-      // Clear the instant flag after the digit value settles. Two
-      // animation frames is enough — by the next render-after-paint
-      // we're back to slide-mode.
-      const id = requestAnimationFrame(() => {
-        requestAnimationFrame(() => setInstant(false));
-      });
-      return () => cancelAnimationFrame(id);
-    }
-  }, [em]);
-
-  // The slide animation per digit. Under reduced-motion we collapse to
-  // an instant swap (no y-transform, no opacity fade).
-  const slideEnabled = !reducedMotion && !instant;
-  const slideTransition = slideEnabled
-    ? {
-        duration: MINUTE_SLIDE_DURATION_MS / 1000,
-        ease: "easeOut" as const,
-      }
-    : { duration: 0 };
 
   return (
     <div
@@ -253,19 +212,25 @@ export function TimeOfDayClock() {
 
         {/* HH:MM digits. Fraunces (font-heading) for the literary feel
             on the journal-as-pocket-paper metaphor. Tabular numerals so
-            digits don't dance as the minute changes. The hour and the
-            two-minute-digit blocks are independently keyed so a single
-            minute change only animates the minute. The colon stays put.
+            digits don't dance as the minute changes.
+
+            **Why no slide animation at M1:** the original PR5b ship used
+            a per-digit slide via inline-block + absolute positioning,
+            which fought the colon's natural baseline on real-phone
+            testing — even with a baseline-anchor child, the visible
+            digit's rendered baseline didn't match the colon's. Plain
+            text avoids the entire baseline coordination problem and
+            ticks the clock visibly via React re-render alone (the
+            travel rAF loop and the linger advance both commit one game-
+            minute at a time, so the value changes ~3× per second during
+            travel — that's the visible ticking). Slot-reel + slide
+            return as M5 Whimsy polish with a baseline-aware mechanic.
 
             The visible text reads "HH:MM · day N" — the e2e regex in
-            lisbon.spec.ts is `(\d\d):(\d\d) · day (\d)`, which matches
-            against `textContent` (which collapses through nested spans).
-            Slide containers are `overflow-hidden` so the leaving digit
-            disappears off the top. */}
+            lisbon.spec.ts `(\d\d):(\d\d) · day (\d)` matches against
+            `textContent`. */}
         <span className="font-heading text-base font-medium tabular-nums leading-none tracking-tight">
-          <SlidingDigits value={hh} transition={slideTransition} />
-          <span aria-hidden="true">:</span>
-          <SlidingDigits value={mm} transition={slideTransition} />
+          {hh}:{mm}
         </span>
 
         {/* "day N" label. Inter (font-sans), smaller, muted-foreground.
@@ -287,65 +252,3 @@ export function TimeOfDayClock() {
   );
 }
 
-/**
- * A two-character slot ("HH" or "MM") that slides up when its value
- * changes. Implementation: `AnimatePresence` keyed on the value string
- * with `mode="popLayout"` so leaving + entering digits stack vertically
- * during the transition.
- *
- * The container is `inline-block overflow-hidden` so the leaving digit
- * disappears off the top edge cleanly. Width is fixed at 2ch (digits
- * are tabular-nums on the parent) so the rest of the pill doesn't
- * reflow during the transition.
- *
- * Under reduced-motion (or `instant`-flagged big jumps) the transition
- * duration is 0 — Framer renders the new value immediately with no
- * animation. The same code path covers both cases via the parent's
- * `slideEnabled` guard.
- */
-function SlidingDigits({
-  value,
-  transition,
-}: {
-  value: string;
-  transition: { duration: number; ease?: "easeOut" };
-}) {
-  return (
-    <span
-      className="relative inline-block overflow-hidden align-baseline"
-      style={{ width: "2ch", height: "1em" }}
-    >
-      {/* Invisible baseline anchor. An inline-block with explicit width,
-          explicit height, and only absolutely-positioned children has no
-          inline content to set its baseline — CSS falls back to the box's
-          bottom edge, which pushes the colon (which has a real glyph
-          baseline) below the visible digits and creates the misalignment
-          the owner reported on real-phone testing. The duplicated value
-          here is hidden via `invisible` (preserves layout) and
-          aria-hidden so screen readers don't read every digit twice. */}
-      <span aria-hidden="true" className="invisible select-none">
-        {value}
-      </span>
-      <AnimatePresence initial={false} mode="popLayout">
-        <motion.span
-          key={value}
-          initial={
-            transition.duration === 0
-              ? { y: 0, opacity: 1 }
-              : { y: "100%", opacity: 0 }
-          }
-          animate={{ y: 0, opacity: 1 }}
-          exit={
-            transition.duration === 0
-              ? { y: 0, opacity: 0 }
-              : { y: "-100%", opacity: 0 }
-          }
-          transition={transition}
-          className="absolute inset-0 inline-block"
-        >
-          {value}
-        </motion.span>
-      </AnimatePresence>
-    </span>
-  );
-}

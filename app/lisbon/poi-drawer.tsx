@@ -6,6 +6,7 @@ import {
   Camera,
   Castle,
   Clock,
+  Loader2,
   Plane,
   ShoppingBasket,
   type LucideIcon,
@@ -205,6 +206,15 @@ export type PoiDrawerProps = {
    * by `lingerVerb.quantum` minutes; the drawer is just the surface.
    */
   onLinger?: () => void;
+  /**
+   * Whether a linger advance is currently in progress. While `true` the
+   * linger button shows a spinner + disabled state so the player gets
+   * visible feedback that time is passing (the parent's rAF loop ticks
+   * the game clock over real seconds, ~1–3s per linger). Owner-found
+   * issue: instant `advance(quantum)` made linger feel like
+   * teleportation; the spinner + visible clock ticking is the fix.
+   */
+  lingering?: boolean;
 };
 
 type TypePillMeta = {
@@ -234,6 +244,7 @@ export function PoiDrawer({
   onTravel,
   lingerVerb,
   onLinger,
+  lingering = false,
 }: PoiDrawerProps) {
   const open = poi !== null;
 
@@ -592,6 +603,7 @@ export function PoiDrawer({
             onTravel={onTravel}
             lingerVerb={lingerVerb}
             onLinger={onLinger}
+            lingering={lingering}
           />
         ) : null}
       </DrawerContent>
@@ -625,12 +637,14 @@ function PoiDrawerBody({
   onTravel,
   lingerVerb,
   onLinger,
+  lingering,
 }: {
   poi: Poi;
   isAtPoi: boolean;
   onTravel?: () => void;
   lingerVerb?: { label: string; quantum: number; enabled: boolean };
   onLinger?: () => void;
+  lingering?: boolean;
 }) {
   const meta = TYPE_PILL_META[poi.type];
   const TypeIcon = meta.icon;
@@ -836,13 +850,29 @@ function PoiDrawerBody({
           type="button"
           size="lg"
           variant="outline"
-          disabled={!lingerVerb.enabled || !onLinger}
-          onClick={lingerVerb.enabled ? onLinger : undefined}
+          // Disabled when the verb is closed (night for non-24h types),
+          // when no handler is wired, OR while a linger advance is in
+          // flight — re-tap during the in-flight advance would queue
+          // another and quietly double the time spent.
+          disabled={!lingerVerb.enabled || !onLinger || lingering}
+          onClick={lingerVerb.enabled && !lingering ? onLinger : undefined}
           className="mt-2 w-full"
           data-testid="poi-drawer-linger-button"
           data-enabled={lingerVerb.enabled}
           data-quantum={lingerVerb.quantum}
+          data-lingering={lingering ? "true" : "false"}
         >
+          {/* Loader2 spinner during linger advance — visible feedback that
+              time is passing. The clock chip is also ticking minute-by-
+              minute via the parent's rAF loop; the spinner is the local
+              affordance on the button itself, so the player doesn't have
+              to look back at the HUD to know "yes, the tap registered." */}
+          {lingering ? (
+            <Loader2
+              className="mr-2 h-4 w-4 animate-spin"
+              aria-hidden="true"
+            />
+          ) : null}
           {lingerVerb.label}
         </Button>
       ) : null}

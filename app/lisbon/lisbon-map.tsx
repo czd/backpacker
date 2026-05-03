@@ -88,7 +88,27 @@ function styleUrlForPhase(phase: Phase): string {
  * = walking burns less of the day; higher = more. Marked PLACEHOLDER
  * so a future tuning pass can grep for it.
  */
-const GAME_MINS_PER_REAL_SEC_DURING_TRAVEL = 3;
+// 3.6 game-min/real-sec — owner-tuned 2026-05-03 after a second
+// real-phone session. The original 3 felt slightly too slow; +20%
+// makes the airport leg burn ~68 in-game minutes over its 19s real
+// walk (vs the prior 57), which reads as "more day passed" without
+// changing the walking speed itself.
+const GAME_MINS_PER_REAL_SEC_DURING_TRAVEL = 3.6;
+
+// Linger uses a separate rate — the player is stationary watching the
+// clock advance, so the cap exists to keep big quanta from feeling like
+// a chore. 15 game-min per real-sec, capped at 3s real time. Resulting
+// linger durations:
+//   transit  15 min →  1.0s real
+//   view     30 min →  2.0s real
+//   sight    60 min →  3.0s real (cap kicks in at 45 min)
+//   market   30 min →  2.0s real
+//   hostel   varies → 3.0s real (480-min sleep is fully capped; the
+//                                clock ticks fast enough during those
+//                                3s that the player sees a montage feel
+//                                — hours flying by — without waiting)
+const LINGER_GAME_MINS_PER_REAL_SEC = 15;
+const LINGER_MAX_REAL_DURATION_MS = 3000;
 
 // Lisbon central frame per the M1 PR1 hand-off note — captures the
 // Baixa / Bairro Alto / Castelo cluster. The airport (Aeroporto
@@ -924,12 +944,87 @@ export function LisbonMap() {
    * advance. The visible "slot reel" / cozy clock animation on linger
    * tap is M5 Whimsy Injector territory.
    */
+  // Linger advance state. Mirrors `traveling`'s shape: a boolean for
+  // the drawer's button-disabled affordance, a ref so the rAF loop reads
+  // the latest value without re-creating the loop on every state flip.
+  // Owner finding: instant `advance(quantum)` made linger feel like
+  // teleportation — "I hardly notice that time elapses." Now we tick
+  // the clock visibly over real seconds, same mechanic as travel.
+  const [lingering, setLingering] = useState(false);
+  const lingeringRef = useRef(false);
+  useEffect(() => {
+    lingeringRef.current = lingering;
+  }, [lingering]);
+
   const handleLinger = useCallback(() => {
     if (!selectedPoi) return;
     const verb = lingerVerbFor(selectedPoi.type, epochMinute);
-    if (!verb.enabled) return;
-    useGameClockStore.getState().advance(verb.quantum);
-  }, [selectedPoi, epochMinute]);
+    if (!verb.enabled || verb.quantum <= 0) return;
+    if (lingeringRef.current) return; // re-entrancy guard
+
+    // Reduced-motion: jump-cut the advance, no rAF loop, no visible
+    // ticking. The player has explicitly opted out of motion.
+    if (reducedMotion) {
+      useGameClockStore.getState().advance(verb.quantum);
+      return;
+    }
+
+    const quantum = verb.quantum;
+    const realDurationMs = Math.min(
+      LINGER_MAX_REAL_DURATION_MS,
+      (quantum / LINGER_GAME_MINS_PER_REAL_SEC) * 1000,
+    );
+    const rate = quantum / (realDurationMs / 1000); // game-min per real-sec
+
+    setLingering(true);
+
+    let rafId: number | null = null;
+    let lastFrameTime: number | null = null;
+    let accumulatedMins = 0;
+    let committedMins = 0;
+
+    const tick = (now: number) => {
+      // Cancellation: if the drawer closes mid-linger or the page is
+      // closed, the lingering state is reset to false and we bail.
+      // The committed minutes stay (no rollback); the remainder is
+      // dropped.
+      if (!lingeringRef.current) {
+        rafId = null;
+        return;
+      }
+      if (committedMins >= quantum) {
+        rafId = null;
+        setLingering(false);
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        // Background pause — same semantic as the travel rAF loop.
+        // The world waits; we don't catch up real-time elapsed.
+        lastFrameTime = null;
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      if (lastFrameTime === null) {
+        lastFrameTime = now;
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const deltaSec = (now - lastFrameTime) / 1000;
+      lastFrameTime = now;
+      accumulatedMins += deltaSec * rate;
+      if (accumulatedMins >= 1) {
+        let wholeMins = Math.floor(accumulatedMins);
+        const remaining = quantum - committedMins;
+        if (wholeMins > remaining) wholeMins = remaining;
+        accumulatedMins -= wholeMins;
+        committedMins += wholeMins;
+        useGameClockStore.getState().advance(wholeMins);
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+  }, [selectedPoi, epochMinute, reducedMotion]);
 
   /**
    * Palette swap on phase change (per ADR-006). When `phaseOf(epochMinute)`
@@ -1355,6 +1450,7 @@ export function LisbonMap() {
             : undefined
         }
         onLinger={handleLinger}
+        lingering={lingering}
       />
     </main>
   );
