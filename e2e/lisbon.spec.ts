@@ -50,4 +50,55 @@ test.describe("/lisbon", () => {
     // so we match on the host rather than the visible label.
     await expect(attribution).toContainText(/maptiler/i);
   });
+
+  // M1 PR2c — gesture mitigation. The §13 M1 DoD line is:
+  // "Pinch-zoom and two-finger pan work smoothly. No accidental
+  // page-zoom or pull-to-refresh from within the map." These
+  // assertions are the regression net for the CSS that delivers it.
+
+  test("map container has touch-action: none (gesture handoff to MapLibre)", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    // The map's wrapping <main> is what carries `touch-action: none`.
+    // `pan-x pan-y` would *prevent* MapLibre from receiving multi-touch
+    // events; `none` is the correct value because MapLibre's pointer
+    // listeners implement pan/zoom themselves. Computed style is what
+    // matters here, not the inline style attribute.
+    const touchAction = await page
+      .locator("main")
+      .evaluate((el) => getComputedStyle(el).touchAction);
+    expect(touchAction).toBe("none");
+  });
+
+  test("body has overscroll-behavior: none (no PWA pull-to-refresh)", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    // overscroll-behavior is the right knob for killing pull-to-refresh
+    // and rubber-band overscroll. We assert on body specifically because
+    // that's where iOS Safari honors it; html is set too as a backup for
+    // Android Chrome but the body assertion is the load-bearing one.
+    const overscroll = await page
+      .locator("body")
+      .evaluate((el) => getComputedStyle(el).overscrollBehavior);
+    // Computed values normalize "none" → "none none" in some engines.
+    // Accept either canonical form.
+    expect(overscroll).toMatch(/^none(?:\s+none)?$/);
+  });
+
+  test("nav control is hidden on touch (pinch is the mobile zoom)", async ({
+    page,
+  }) => {
+    await page.goto("/lisbon");
+    // Playwright's mobile project sets `isMobile: true, hasTouch: true`
+    // (see playwright.config.ts), which makes Chromium match
+    // `(pointer: coarse)` and `(hover: none)` — exactly the touch path
+    // that should hide the control. Assert the +/- zoom buttons are
+    // not visible. We allow the elements to exist in the DOM (MapLibre
+    // mounts them; CSS hides via `display: none` on the wrapping
+    // `.maplibregl-ctrl-group`).
+    const zoomIn = page.locator(".maplibregl-ctrl-zoom-in");
+    await expect(zoomIn).toBeHidden();
+  });
 });

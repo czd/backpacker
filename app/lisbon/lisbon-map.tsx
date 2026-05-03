@@ -136,7 +136,33 @@ export function LisbonMap() {
     // `relative h-svh w-full overflow-hidden` is the positioning context
     // and full-bleed frame. `h-svh` is the iOS Safari address-bar-aware
     // viewport unit so the map doesn't get clipped by the chrome.
-    <main className="relative h-svh w-full overflow-hidden">
+    //
+    // `touch-action: none` is the load-bearing gesture mitigation for
+    // §13 M1 DoD ("pinch-zoom and two-finger pan work smoothly. No
+    // accidental page-zoom or pull-to-refresh from within the map").
+    // It is the *correct* value here, not the intuitive one — the
+    // intuitive guess is `pan-x pan-y`, which actually means "the
+    // browser handles single-finger panning" and would *prevent*
+    // MapLibre from receiving the touch events it needs to implement
+    // its own pan/zoom. `none` tells the browser "I'm taking all touch
+    // gestures" and lets MapLibre's pointer-event listeners do
+    // pinch-zoom / two-finger pan / drag-pan / tap themselves. This
+    // matches MapLibre's own canvas-container CSS (`touch-action: none`
+    // when both touch-zoom-rotate and touch-drag-pan are enabled,
+    // which is the default).
+    //
+    // iOS Safari edge swipe-back: in browser-tab Safari, swiping
+    // right from the leftmost ~20px of the viewport is reserved by
+    // the OS for the back-gesture and we cannot capture it. The
+    // brief targets standalone PWA installs (AGENTS.md §6.6), where
+    // there is no browser to swipe back to — the gesture is moot.
+    // For browser-tab users, accept that the leftmost edge is
+    // "swipe-back territory" and cannot be panned-from-edge; this
+    // is documented as a §12.5 best-effort limitation.
+    <main
+      className="relative h-svh w-full overflow-hidden"
+      style={{ touchAction: "none" }}
+    >
       {cozyStyle ? (
         <Map
           initialViewState={{
@@ -160,17 +186,24 @@ export function LisbonMap() {
           // keeps it out of the future top-left "leave" affordance area
           // (AGENTS.md §6.3 mini-game leave button). `compact: true`
           // collapses the chip on narrow viewports — important at the
-          // 390px reference width. The chip itself is restyled to the
-          // cozy palette in app/globals.css.
+          // 390px reference width. Safe-area insets on the chip are
+          // applied via `app/globals.css` so the chip clears the iOS
+          // home indicator on devices that need it.
           attributionControl={{ compact: true }}
           style={{ position: "absolute", inset: 0 }}
         >
           {/*
-           * NavigationControl in the top-right with safe-area padding so
-           * the +/- zoom buttons clear the notch and don't compete with
-           * the future top-left "leave" affordance for mini-game routes.
-           * `showCompass={false}` because pitch/bearing are locked — a
-           * compass control with nothing to control is just visual noise.
+           * NavigationControl in the top-right. Hidden on touch devices
+           * via `@media (pointer: coarse)` in `app/globals.css` (M1 PR2c
+           * decision): pinch is the brief's mobile zoom gesture (§6.2),
+           * so explicit zoom buttons on a phone are desktop-coded clutter
+           * and below the §6.2 44pt floor at MapLibre's default 29×29.
+           * The control is rendered for desktop courtesy (pointer: fine)
+           * where 29×29 click targets are fine and pinch is not the
+           * natural zoom. Safe-area top/right margin is preserved so when
+           * it does render on a desktop touchscreen (`pointer: fine` +
+           * notch — vanishingly rare but possible), it still clears the
+           * inset. `showCompass={false}` because pitch/bearing are locked.
            */}
           <NavigationControl
             position="top-right"

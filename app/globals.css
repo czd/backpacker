@@ -228,9 +228,27 @@
   }
   body {
     @apply bg-background text-foreground;
+    /*
+     * Kill PWA pull-to-refresh and the rubber-band overscroll bounce on
+     * the body. Without this, swiping down from the top of the map fires
+     * the browser's pull-to-refresh and reloads the route — a §13 M1 DoD
+     * blocker ("no accidental … pull-to-refresh from within the map").
+     *
+     * `overscroll-behavior: none` is the right knob for the page chrome
+     * because it's both global and harmless for the splash and other
+     * scrollable pages (they don't overscroll past their content; the
+     * splash content is shorter than the viewport). Touch-action stays
+     * default on body so non-map routes pan/zoom normally; only the map
+     * container itself sets `touch-action: none` (see lisbon-map.tsx).
+     */
+    overscroll-behavior: none;
   }
   html {
     @apply font-sans;
+    /* Some platforms (Android Chrome notably) honor overscroll-behavior
+     * on <html> rather than <body>, so we set it on both for belt-and-
+     * braces. The body setting alone is enough on iOS Safari. */
+    overscroll-behavior: none;
   }
 }
 
@@ -255,6 +273,30 @@
   padding: 2px 6px;
   backdrop-filter: blur(4px);
 }
+
+/*
+ * Safe-area handling for floating chrome anchored to the bottom edges.
+ * MapLibre stock CSS gives `.maplibregl-ctrl-bottom-right .maplibregl-ctrl`
+ * a 10px margin; we override the bottom and right margins so the chip
+ * (and any future floating chrome in this corner) clears the iOS home
+ * indicator and Android gesture bar. Both `--sai-bottom` and
+ * `--sai-right` resolve to 0px on devices without safe-area insets, so
+ * this is a no-op on desktop and old phones — the 10px default is
+ * preserved on top of the inset. Selector matches MapLibre's specificity
+ * (positional ancestor + child) so the override actually wins.
+ *
+ * Top-right is not adjusted here: the NavigationControl in that slot is
+ * hidden on touch (see the `pointer: coarse` rule below), so the safe-
+ * area corner is unused on phones; on desktop the 10px margin is plenty.
+ */
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin-bottom: calc(10px + var(--sai-bottom));
+  margin-right: calc(10px + var(--sai-right));
+}
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl {
+  margin-bottom: calc(10px + var(--sai-bottom));
+  margin-left: calc(10px + var(--sai-left));
+}
 .maplibregl-ctrl-attrib a {
   color: var(--muted-foreground);
   text-decoration: none;
@@ -278,13 +320,33 @@
 
 /*
  * MapLibre navigation control (the +/- zoom buttons in the top-right).
- * Same cozy treatment so the control reads as part of the world. Tap
- * targets stay 29px (MapLibre default) — that's below the 44pt floor
- * (AGENTS.md §6.2). Mobile App Builder's gesture-mitigation slice
- * (next) is the right place to either bump the size or hide the
- * control on touch in favor of pinch-zoom only. Flagged here, not
- * fixed here — out of scope for the cozy-style slice.
+ *
+ * Mobile App Builder decision (M1 PR2c): hide the control on touch
+ * devices entirely. Pinch is the brief's mobile zoom gesture (§6.2);
+ * explicit zoom buttons on a phone are desktop-think — their presence
+ * implies pinch isn't enough. Removing them on touch reads cozier,
+ * reclaims the top-right safe-area corner for future HUD work
+ * (§6.3 top bar / wallet / time-of-day), and sidesteps the §6.2 44pt
+ * floor problem entirely (MapLibre's defaults are 29×29 — below the
+ * floor; bumping them to 44×44 would have crowded the corner with two
+ * thumb-sized buttons that nobody uses on a phone).
+ *
+ * The control is left visible on `pointer: fine` (mouse) for desktop
+ * courtesy, where 29×29 click targets are perfectly fine and pinch is
+ * not the natural zoom gesture. Cozy palette restyle stays so when it
+ * does render, it reads as part of the world.
+ *
+ * `pointer: coarse` is the canonical "primary input is touch" media
+ * query; `hover: none` is the natural backup. Combining them via `or`
+ * catches the rare device where one matches but not the other.
  */
+@media (pointer: coarse), (hover: none) {
+  .maplibregl-ctrl-group:has(.maplibregl-ctrl-zoom-in),
+  .maplibregl-ctrl-group:has(.maplibregl-ctrl-zoom-out) {
+    display: none;
+  }
+}
+
 .maplibregl-ctrl-group {
   background-color: color-mix(in oklab, var(--background) 85%, transparent);
   border-radius: calc(var(--radius) * 0.6);
