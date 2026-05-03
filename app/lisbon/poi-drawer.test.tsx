@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import {
   DEFAULT_SNAP,
@@ -84,14 +84,22 @@ describe("PoiDrawer", () => {
     // The handle override is the visible cue for the cozy chrome pass.
     // Lock the contract so a refactor can't accidentally drop the cozy
     // tint or width back to shadcn defaults.
+    //
+    // M1 PR4-fixup: the visible 36×4 pill is now an inner <span>; the
+    // outer DrawerHandle (Vaul's primitive) is the larger invisible
+    // hit area (h-6 w-16) that registers drag/tap. We assert the
+    // inner pill carries the cozy paint.
     render(<PoiDrawer poi={FIXTURE} onOpenChange={() => {}} />);
     const handle = screen.getByTestId("poi-drawer-handle");
     expect(handle).toBeInTheDocument();
-    // 36px wide via Tailwind `w-9`, 4px tall via `h-1`.
-    expect(handle.className).toMatch(/\bw-9\b/);
-    expect(handle.className).toMatch(/\bh-1\b/);
-    // Muted-foreground tone (warm) at 40% alpha — not pure grey.
-    expect(handle.className).toMatch(/bg-muted-foreground\/40/);
+    // The inner pill — there is exactly one decorative span carrying
+    // the cozy classes. Vaul also renders a `<span data-vaul-handle-
+    // hitarea>` between the wrapper and our pill, but that hitarea
+    // doesn't carry our pill classes; we look for the pill by its
+    // shape classes directly.
+    const pill = handle.querySelector(".w-9.h-1") as HTMLElement | null;
+    expect(pill).not.toBeNull();
+    expect(pill!.className).toMatch(/bg-muted-foreground\/40/);
   });
 
   it("renders the drawer with rounded-t-3xl top corners (cozy paper-sheet edge)", () => {
@@ -102,16 +110,16 @@ describe("PoiDrawer", () => {
     expect(content.className).toMatch(/rounded-t-3xl/);
   });
 
-  it("declares the §6.3 three snap points (peek 0.3 / half 0.6 / full 0.95)", () => {
+  it("declares the §6.3 three snap points (peek 0.3 / half 0.7 / full 0.95)", () => {
     // The constants are the source of truth; the drawer reads from them.
-    // Locking the values here protects the §6.3 contract — a refactor that
-    // accidentally changed the snap fractions would also need to update
-    // this assertion, which is a forced check-in with the brief.
-    expect(SNAP_POINTS).toEqual([0.3, 0.6, 0.95]);
-    expect(DEFAULT_SNAP).toBe(0.6);
+    // Half is 0.7 post-PR4-fixup (was 0.6) — owner-tuned after real-phone
+    // testing showed the openHours line sat below the fold at 0.6.
+    // Locking the values here protects the §6.3 contract.
+    expect(SNAP_POINTS).toEqual([0.3, 0.7, 0.95]);
+    expect(DEFAULT_SNAP).toBe(0.7);
   });
 
-  it("notifies onSnapChange with the default snap (0.6) when opened", () => {
+  it("notifies onSnapChange with the default snap (0.7) when opened", () => {
     // Vaul's setActiveSnapPoint fires on initial mount with the snap we
     // pass it (DEFAULT_SNAP). The wrapper forwards numeric values to the
     // parent. We assert the parent saw the half-snap default.
@@ -124,12 +132,12 @@ describe("PoiDrawer", () => {
       />,
     );
     // Vaul may fire setActiveSnapPoint with the initial value during
-    // mount; if it does, we expect 0.6. If it doesn't (some Vaul versions
-    // skip the initial fire), the parent's own default of 0.6 is correct
+    // mount; if it does, we expect 0.7. If it doesn't (some Vaul versions
+    // skip the initial fire), the parent's own default of 0.7 is correct
     // by construction. This test passes either way; the calls we *do*
-    // observe must be 0.6 or null, never another snap.
+    // observe must be 0.7 or null, never another snap.
     for (const call of onSnapChange.mock.calls) {
-      expect([0.6, null]).toContain(call[0]);
+      expect([0.7, null]).toContain(call[0]);
     }
   });
 
@@ -169,6 +177,79 @@ describe("PoiDrawer", () => {
     // contract is reachable, not that Vaul plumbed it. If a future
     // Vaul update changes this, we'll catch it in the e2e test.
     expect(sawNull || onSnapChange.mock.calls.length === 0).toBe(true);
+  });
+
+  it("renders a Travel-here button when isAtPoi is false (default)", () => {
+    const onTravel = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={onTravel}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-travel-button");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent(/travel here/i);
+    expect(btn).not.toBeDisabled();
+    expect(btn).toHaveAttribute("data-state", "not-at-poi");
+  });
+
+  it("renders a You're-here disabled button when isAtPoi is true", () => {
+    const onTravel = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={onTravel}
+        isAtPoi
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-travel-button");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent(/you're here/i);
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("data-state", "at-poi");
+  });
+
+  it("fires onTravel when the Travel-here button is clicked", () => {
+    const onTravel = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={onTravel}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("poi-drawer-travel-button"));
+    expect(onTravel).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders openHours BEFORE the description (PR4-fixup content order)", () => {
+    // Practical info above the fold; literary prose below. The order is
+    // observable in DOM-source-order, which is also tab/scroll order.
+    render(<PoiDrawer poi={FIXTURE} onOpenChange={() => {}} />);
+    const body = screen.getByTestId("poi-drawer-body");
+    const openHours = screen.getByTestId("poi-drawer-open-hours");
+    const description = screen.getByTestId("poi-drawer-description");
+    const children = Array.from(body.querySelectorAll("[data-testid]"));
+    const openHoursIdx = children.indexOf(openHours);
+    const descriptionIdx = children.indexOf(description);
+    expect(openHoursIdx).toBeGreaterThan(-1);
+    expect(descriptionIdx).toBeGreaterThan(-1);
+    expect(openHoursIdx).toBeLessThan(descriptionIdx);
+  });
+
+  it("description has overflow-y-auto + touch-pan-y for long-description scroll", () => {
+    // With handleOnly on the Root, drag belongs to the handle and scroll
+    // belongs to the description — the description is the only variable-
+    // height row inside a flex-column body, so it owns the scroll. The
+    // header and Travel-here button are fixed-height siblings that stay
+    // visible at any snap.
+    render(<PoiDrawer poi={FIXTURE} onOpenChange={() => {}} />);
+    const description = screen.getByTestId("poi-drawer-description");
+    expect(description.className).toMatch(/\boverflow-y-auto\b/);
+    expect(description.className).toMatch(/\btouch-pan-y\b/);
   });
 
   it("calls onOpenChange when the user dismisses (parent contract)", () => {

@@ -23,7 +23,7 @@ import {
   type LngLat,
 } from "./geo";
 import { PoiMarker } from "./poi-marker";
-import { PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
+import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -61,6 +61,27 @@ const LISBON_ZOOM = 13;
 // the code comment so a future contributor sees the duplication and
 // keeps it deliberate.
 const AIRPORT_COORDS: LngLat = { lng: -9.13335, lat: 38.77131 };
+
+/**
+ * Slug of the POI the avatar starts at. The avatar mounts at
+ * AIRPORT_COORDS — same coordinates as the `lisbon-aeroporto` POI in
+ * the seed — so the player opens the airport drawer and reads
+ * "You're here" as the action button. M1 PR4-fixup (preview-before-
+ * travel split). If a future PR moves the avatar's start away from
+ * a POI (e.g. a "you're on the bus from the airport" narrative),
+ * this initial value becomes `null` and the airport drawer correctly
+ * reads "Travel here" again.
+ */
+const AVATAR_START_SLUG = "lisbon-aeroporto";
+
+/**
+ * Snap-to-peek delay before the fast-travel kicks off. Vaul's
+ * setActiveSnapPoint is async; the snap-down animation runs ~250ms.
+ * We give it that beat so the drawer is at peek (~30%) before the
+ * avatar starts moving — the player sees the map come back into view,
+ * then watches the trip. Skipped under prefers-reduced-motion.
+ */
+const SNAP_TO_PEEK_DELAY_MS = 250;
 
 // Trail layer ID. Stable so MapLibre's `Source`/`Layer` reconcile across
 // renders (react-map-gl uses these IDs as keys).
@@ -185,12 +206,24 @@ export function LisbonMap() {
   // pattern UI Designer's slice flagged.
   const [selectedPoi, setSelectedPoi] = useState<Doc<"pois"> | null>(null);
 
-  // Active drawer snap point. Drives the camera-offset calculus below. A
-  // value of `null` means the drawer is closed (no offset, no panTo on
-  // snap-changes). When the drawer opens, the drawer wrapper notifies us
-  // with the half-snap default (0.6); subsequent drag operations notify
-  // with the new snap.
+  // Active drawer snap point. Drives the camera-offset calculus below
+  // and is now also a *controlled* prop on PoiDrawer (M1 PR4-fixup) so
+  // we can programmatically snap the drawer to peek during travel
+  // choreography and back to half on arrival. A value of `null` means
+  // the drawer is closed (no offset, no panTo on snap-changes). When
+  // the drawer opens, we initialize to `DEFAULT_SNAP` (half = 0.7);
+  // user drags fire `onSnapChange` and we mirror them here.
   const [activeSnapPoint, setActiveSnapPoint] = useState<number | null>(null);
+
+  // Slug of the POI the avatar is currently *at*. Drives the drawer's
+  // action button copy ("Travel here" vs "You're here"). Initialized to
+  // the airport slug because the avatar's starting coords match that
+  // POI exactly. When a fast-travel completes, we set this to the
+  // destination POI's slug; the drawer derives `isAtPoi` from
+  // `currentPoiSlug === selectedPoi.slug`.
+  const [currentPoiSlug, setCurrentPoiSlug] = useState<string | null>(
+    AVATAR_START_SLUG,
+  );
 
   // Avatar state — see AGENTS.md §7.1. Initial position is the airport
   // (per the brief's narrative beat: the player has just arrived). The
@@ -403,14 +436,19 @@ export function LisbonMap() {
 
   const handlePoiSelect = useCallback(
     (poi: Doc<"pois">) => {
+      // M1 PR4-fixup: marker tap is now PREVIEW only — opens the drawer
+      // and pans the camera, but does NOT start the fast-travel. The
+      // player commits explicitly via the "Travel here" button. This
+      // aligns with pillars #2 (calm) and #5 (player time is sacred):
+      // browse without committing.
       setSelectedPoi(poi);
+      // Initialize the drawer's controlled snap to the half default. On
+      // a marker-to-marker switch, this also resets a previously-snapped
+      // drawer back to half — matching the §6.3 default-on-open contract.
+      setActiveSnapPoint(DEFAULT_SNAP);
 
       // Pan the camera with the half-snap offset by default — that's the
-      // snap the drawer opens at per the M1 DoD. If the player has
-      // already opened a drawer at a different snap (e.g. they dragged
-      // to peek before tapping a different marker), the drawer wrapper
-      // resets to the default snap on key-remount, so the half offset
-      // is correct.
+      // snap the drawer opens at per the M1 DoD.
       const map = mapRef.current;
       if (map) {
         const offset = offsetForSnap(SNAP_POINTS[1]);
@@ -420,12 +458,50 @@ export function LisbonMap() {
           essential: false,
         });
       }
-
-      // Kick off the fast-travel animation. Don't await — the camera
-      // pan, drawer open, and avatar travel run in parallel.
-      void fastTravelTo({ lng: poi.lng, lat: poi.lat });
     },
-    [fastTravelTo, offsetForSnap],
+    [offsetForSnap],
+  );
+
+  /**
+   * Travel-here button handler. Runs the choreographed sequence:
+   *   1. Snap drawer to peek so the map is visible during travel
+   *   2. Run the fast-travel animation
+   *   3. Snap drawer back to half; mark the avatar as "at" this POI so
+   *      the button flips to "You're here"
+   *
+   * Under prefers-reduced-motion: skip the choreography entirely
+   * (no snap-down, no snap-back). The fast-travel itself already short-
+   * circuits to a jump-cut under reduced-motion via fastTravelTo's
+   * own branch. We still update `currentPoiSlug` so the button copy
+   * flips to "You're here."
+   */
+  const handleTravelTo = useCallback(
+    async (poi: Doc<"pois">) => {
+      if (!reducedMotion) {
+        // 1. Snap drawer to peek. setActiveSnapPoint is synchronous
+        //    (React state update); Vaul's actual height animation runs
+        //    ~250ms. We wait that beat before kicking off the travel so
+        //    the map is unobscured when the avatar starts moving.
+        setActiveSnapPoint(SNAP_POINTS[0]);
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, SNAP_TO_PEEK_DELAY_MS),
+        );
+      }
+
+      // 2. Run the fast-travel. This awaits to completion (or, under
+      //    reduced-motion, to the 200ms traveling-flag flash).
+      await fastTravelTo({ lng: poi.lng, lat: poi.lat });
+
+      // 3. Mark the avatar as at this POI; flip the drawer back to half
+      //    if we snapped it down. Under reduced-motion we leave the
+      //    drawer at whatever snap the player had it at — minimum
+      //    motion, per §6.5.
+      setCurrentPoiSlug(poi.slug);
+      if (!reducedMotion) {
+        setActiveSnapPoint(DEFAULT_SNAP);
+      }
+    },
+    [fastTravelTo, reducedMotion],
   );
 
   /**
@@ -722,9 +798,19 @@ export function LisbonMap() {
       <PoiDrawer
         poi={selectedPoi as Poi | null}
         onOpenChange={(open) => {
-          if (!open) setSelectedPoi(null);
+          if (!open) {
+            setSelectedPoi(null);
+            setActiveSnapPoint(null);
+          }
         }}
         onSnapChange={handleSnapChange}
+        activeSnapPoint={activeSnapPoint}
+        isAtPoi={
+          selectedPoi !== null && currentPoiSlug === selectedPoi.slug
+        }
+        onTravel={
+          selectedPoi ? () => void handleTravelTo(selectedPoi) : undefined
+        }
       />
     </main>
   );

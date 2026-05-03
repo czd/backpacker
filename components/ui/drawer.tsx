@@ -29,6 +29,24 @@ function DrawerClose({
   return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />
 }
 
+/**
+ * Forward of Vaul's `<Drawer.Handle>`. Required when the Root has
+ * `handleOnly` set — Vaul restricts drag to elements rendered through
+ * this primitive (the outer `<div>` carries `onPointerDown`/`onPointerMove`
+ * that call into Vaul's `onPress`/`onDrag`). Without a handle inside
+ * `<DrawerContent>`, a `handleOnly` drawer becomes drag-immobile.
+ *
+ * The primitive renders an outer `<div data-vaul-handle>` plus an inner
+ * `<span data-vaul-handle-hitarea>` wrapping `children`. Consumers can
+ * style either via Tailwind selectors on `className` (`[&>span]:...`)
+ * and pass arbitrary children for the visible affordance.
+ */
+function DrawerHandle({
+  ...props
+}: React.ComponentProps<typeof DrawerPrimitive.Handle>) {
+  return <DrawerPrimitive.Handle data-slot="drawer-handle" {...props} />
+}
+
 function DrawerOverlay({
   className,
   ...props
@@ -138,6 +156,7 @@ export {
   DrawerTrigger,
   DrawerClose,
   DrawerContent,
+  DrawerHandle,
   DrawerHeader,
   DrawerFooter,
   DrawerTitle,

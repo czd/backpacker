@@ -138,27 +138,21 @@ export function lerp(a: number, b: number, t: number): number {
 }
 
 /**
- * Map a straight-line distance (km) to a fast-travel duration in ms.
+ * Travel duration scales linearly with straight-line distance.
+ * 600ms per km — owner-tuned 2026-05-03 after real-phone testing
+ * showed the previous clamps (max(1600, min(3000, ...))) made
+ * short hops feel slow and the airport leg feel like running.
  *
- * Contract (per UI Designer's hand-off + brief):
- *  - **Floor 1600ms**: the avatar's traveling-pulse cycles every 1.6s.
- *    A shorter trip would flip the `traveling` flag back before the player
- *    sees one full cycle, which reads jittery.
- *  - **Cap 3000ms**: even the airport leg shouldn't feel like a slog.
- *    At ~6.4km the linear part would compute to 2720ms; the cap is
- *    inclusive cover for any pathological future leg (a journal map or
- *    a pre-visualization of a not-yet-real long flight).
- *  - **Linear in between**: `800 + 300 * km`. The intercept (800ms) is the
- *    "spin-up" feel; the slope (300ms/km) reads as a stride pace at city
- *    scale.
+ * No floor, no cap — pure proportional. M2's energy work may add an
+ * elevation factor (Geographer's flag in STATUS), which slots in here:
+ *   travelDurationMs(distKm: number, elevationFactor?: number): number
  *
- * Geographer's elevation-factor flag (STATUS): captured for M2. For M1
- * this is pure straight-line. The Castelo's 90m gain over a ~600m line
- * computes to a 1600ms (floored) trip with this formula — fine for a
- * fast-travel cinematic, even if it doesn't match a real walk. M2 adds an
- * elevation knob; this signature stays the same.
+ * Trade-off accepted by the owner: short hops (e.g. hostel → castle at
+ * ~0.6km → 360ms) won't complete a full 1.6s avatar traveling-pulse
+ * cycle. The pulse will mostly be visible during longer legs (the
+ * airport at ~6.4km → 3840ms), which fits the narrative — the airport
+ * arrival is also where the traveling visual most wants to read.
  */
 export function travelDurationMs(distKm: number): number {
-  const linear = 800 + distKm * 300;
-  return Math.max(1600, Math.min(3000, linear));
+  return distKm * 600;
 }

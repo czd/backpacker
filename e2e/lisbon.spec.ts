@@ -232,7 +232,36 @@ test.describe("/lisbon", () => {
     await expect(avatar).toHaveAttribute("data-facing", "0");
   });
 
-  test("tapping a POI starts fast-travel: avatar enters traveling state, then settles", async ({
+  test("tapping a POI marker opens the drawer but does NOT auto-travel (preview)", async ({
+    page,
+  }) => {
+    // M1 PR4-fixup contract: marker tap is now PREVIEW only. The drawer
+    // opens; the avatar stays put until the player taps "Travel here."
+    await page.goto("/lisbon");
+    await expect(
+      page.locator('[data-testid^="poi-marker-"]'),
+    ).toHaveCount(5);
+    const avatar = page.getByTestId("avatar-marker");
+    await expect(avatar).toHaveAttribute("data-traveling", "false");
+
+    const hostel = page.getByTestId("poi-marker-lisbon-baixa-hostel");
+    await hostel.click();
+
+    // Drawer opened with the right title.
+    await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
+
+    // Avatar must stay at rest for at least 500ms after the marker tap —
+    // any auto-travel would flip data-traveling to "true" within a
+    // render or two of the click. Sample a few times across the window.
+    for (let i = 0; i < 5; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await expect(avatar).toHaveAttribute("data-traveling", "false");
+      // eslint-disable-next-line no-await-in-loop
+      await page.waitForTimeout(100);
+    }
+  });
+
+  test("tapping the Travel-here button starts fast-travel; arrival flips to You're here", async ({
     page,
   }) => {
     await page.goto("/lisbon");
@@ -242,40 +271,87 @@ test.describe("/lisbon", () => {
     const avatar = page.getByTestId("avatar-marker");
     await expect(avatar).toHaveAttribute("data-traveling", "false");
 
-    // Tap the hostel — it's the closest POI to the airport (the avatar's
-    // start position) along the natural narrative arc, and the airport →
-    // hostel leg is the longest of the central legs (~2720ms travel),
-    // making the traveling-state window the most generous to observe.
+    // Open the hostel drawer (preview).
     const hostel = page.getByTestId("poi-marker-lisbon-baixa-hostel");
     await hostel.click();
+    await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
 
-    // We observe the traveling lifecycle by watching `data-traveling`
-    // transition true → false. Under parallel worker load, Playwright's
-    // poll cadence can be coarse enough that the "true" value flits past
-    // between two polls; rather than catch the rising edge, we wait for
-    // the *settled* state and then assert that `data-facing` reflects a
-    // non-zero bearing — which is only ever set when traveling started.
-    // The bearing is the load-bearing observable for "fast-travel ran";
-    // the boolean flag is just one frame's signal.
+    // The button starts as "Travel here" — the avatar is at the airport,
+    // not the hostel.
+    const travelBtn = page.getByTestId("poi-drawer-travel-button");
+    await expect(travelBtn).toHaveText(/travel here/i);
+    await expect(travelBtn).toBeEnabled();
+
+    // Click it. The choreography is: snap to peek (~250ms), then the
+    // travel runs (~3.8s for the airport → hostel leg post-clamp-removal),
+    // then snap back to half. We observe the travel by watching the
+    // `data-traveling` attribute transition true → false; under parallel
+    // worker load Playwright may miss the rising edge, so we wait for
+    // the *settled* state and then assert `data-facing` reflects the
+    // bearing the trip should have produced.
+    await travelBtn.click();
+    // Wait for the rising edge — traveling=true. The snap-to-peek
+    // choreography adds ~250ms before fastTravelTo flips the flag,
+    // so the immediate post-click sample is still "false". Polling
+    // for "false" without first seeing "true" would short-circuit.
     await expect
       .poll(
         async () => avatar.getAttribute("data-traveling"),
-        { timeout: 8000, message: "avatar did not return to resting state" },
+        {
+          timeout: 4000,
+          message: "avatar did not enter traveling state",
+        },
+      )
+      .toBe("true");
+    // Then wait for the settled state.
+    await expect
+      .poll(
+        async () => avatar.getAttribute("data-traveling"),
+        {
+          timeout: 10000,
+          message: "avatar did not return to resting state",
+        },
       )
       .toBe("false");
-
-    // facing changes to a non-zero bearing (hostel is south + slightly
-    // west of the airport, so the bearing is in the southern arc, ~170–
-    // 200°). We assert it's *not* zero rather than the exact value to
-    // stay resilient to seed-coord nudges. This is the observable that
-    // proves the fast-travel cycle ran end-to-end.
     const facing = await avatar.getAttribute("data-facing");
     expect(facing).not.toBe("0");
     expect(Number(facing)).toBeGreaterThan(150);
     expect(Number(facing)).toBeLessThan(210);
+
+    // After arrival, the same drawer's button must read "You're here"
+    // (avatar is now at this POI's slug). The button is also disabled.
+    // Allow a short beat for React state propagation post-arrival.
+    await expect(travelBtn).toHaveText(/you'?re here/i, { timeout: 5000 });
+    await expect(travelBtn).toBeDisabled();
   });
 
-  test("drawer opens at the half snap by default (Vaul snap-state contract)", async ({
+  test("opening the avatar's start POI shows You're here from first paint", async ({
+    page,
+  }) => {
+    // The avatar starts at the airport; opening the airport drawer must
+    // immediately show "You're here", not "Travel here". This guards the
+    // initial currentPoiSlug seed.
+    //
+    // The airport is north of the central LISBON_CENTER frame at z13
+    // and lives offscreen until the player pans to it. We use the
+    // sr-only places-of-interest list (the §6.8 keyboard/AT
+    // alternative) to activate the airport's drawer without relying
+    // on the marker being in the viewport.
+    await page.goto("/lisbon");
+    await expect(
+      page.locator('[data-testid^="poi-marker-"]'),
+    ).toHaveCount(5);
+    const list = page.getByRole("list", { name: "Places of interest" });
+    await list
+      .locator("button")
+      .filter({ hasText: "Aeroporto Humberto Delgado" })
+      .dispatchEvent("click");
+    const travelBtn = page.getByTestId("poi-drawer-travel-button");
+    await expect(travelBtn).toHaveText(/you'?re here/i);
+    await expect(travelBtn).toBeDisabled();
+  });
+
+  test("drawer opens at the half snap (0.7) by default (Vaul snap-state contract)", async ({
     page,
   }) => {
     await page.goto("/lisbon");
@@ -291,7 +367,7 @@ test.describe("/lisbon", () => {
     // both the body is visible AND the content has the snap-points-
     // active marker so we know the snap-point machinery is engaged
     // (vs. the default no-snap-points rendering, which would not pass
-    // the §6.3 contract).
+    // the §6.3 contract). Half is 0.7 post-PR4-fixup.
     const drawerBody = page.getByTestId("poi-drawer-body");
     await expect(drawerBody).toBeVisible();
     const drawerContent = page.getByTestId("poi-drawer-content");
@@ -354,15 +430,20 @@ test.describe("/lisbon", () => {
     // for our stable layer id.
     const hostel = page.getByTestId("poi-marker-lisbon-baixa-hostel");
     await hostel.click();
+    // M1 PR4-fixup: travel commits via the "Travel here" button, not
+    // marker tap. Wait for the drawer + button to be ready, then click.
+    await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
+    await page.getByTestId("poi-drawer-travel-button").click();
     const avatar = page.getByTestId("avatar-marker");
-    // Travel is ~2720ms (airport → hostel) plus 400ms trail fade-out;
-    // we poll for traveling=true with a generous window because under
+    // Travel is ~3840ms (airport → hostel under the post-PR4-fixup
+    // pure-proportional formula) plus the 250ms snap-to-peek delay.
+    // We poll for traveling=true with a generous window because under
     // parallel worker load the click → state-flip → DOM-update path can
     // take a beat longer than in isolation.
     await expect
       .poll(
         async () => avatar.getAttribute("data-traveling"),
-        { timeout: 4000, message: "avatar did not enter traveling state" },
+        { timeout: 5000, message: "avatar did not enter traveling state" },
       )
       .toBe("true");
 
@@ -412,22 +493,35 @@ test.describe("/lisbon", () => {
     const avatar = page.getByTestId("avatar-marker");
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
 
-    // Capture the avatar's pre-travel pixel position (it should be at
-    // the airport, off-frame to the north for the default Lisbon zoom
-    // — but `boundingBox` returns null for elements outside the
-    // viewport in some Playwright versions, so we only use the
-    // post-travel position as the assertion).
+    // M1 PR4-fixup: marker tap is preview-only; travel commits via the
+    // "Travel here" button.
     await castelo.click();
-    // Wait for the travel + fade to fully complete.
+    await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
+    await page.getByTestId("poi-drawer-travel-button").click();
+    // Wait for the rising edge first — the snap-to-peek choreography
+    // adds ~250ms before fastTravelTo flips the flag. Polling for
+    // "false" without first seeing "true" would short-circuit on the
+    // initial post-click sample.
     await expect
       .poll(
         async () => avatar.getAttribute("data-traveling"),
-        { timeout: 5000 },
+        { timeout: 4000 },
+      )
+      .toBe("true");
+    // Wait for the travel + fade to fully complete. Airport → Castelo
+    // is the longest leg in the seed; under the post-PR4-fixup
+    // pure-proportional formula the trip is ~3.5s. Add buffer for the
+    // 250ms snap-to-peek delay + 400ms trail fade-out.
+    await expect
+      .poll(
+        async () => avatar.getAttribute("data-traveling"),
+        { timeout: 8000 },
       )
       .toBe("false");
-    // Allow the trail fade-out (400ms) to settle so any layout
-    // jitter from the fade is past us.
-    await page.waitForTimeout(500);
+    // Allow the trail fade-out (400ms) + drawer snap-back (~250ms +
+    // 300ms re-pan) to settle so any layout jitter from those
+    // animations is past us.
+    await page.waitForTimeout(900);
 
     // Both the avatar marker and the Castelo POI marker are now
     // positioned at the same lng/lat. react-map-gl projects both via

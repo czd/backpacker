@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BedDouble,
   Camera,
@@ -11,10 +11,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
   DrawerDescription,
+  DrawerHandle,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
@@ -100,20 +102,27 @@ export type Poi = {
 
 /**
  * Snap points for the bottom sheet, per AGENTS.md §6.3:
- *   peek ~30% / half ~60% / full ~95%.
+ *   peek ~30% / half ~70% / full ~95%.
+ *
+ * Half was bumped from 0.6 → 0.7 in M1 PR4-fixup after real-phone
+ * testing: at 0.6 of the iPhone viewport, the Clock + openHours line
+ * sat below the fold. Bumping to 0.7 brings the practical info into
+ * view at the default snap. The brief's §6.3 said "~60%" — 0.7 is a
+ * defensible interpretation that prioritizes the player seeing the
+ * load-bearing info before they have to drag.
  *
  * Exported so the parent can compare `activeSnapPoint` numerically when
  * deriving `panTo` offsets, rather than re-typing magic numbers. The order
  * (least-visible → most-visible) is the order Vaul expects.
  */
-export const SNAP_POINTS = [0.3, 0.6, 0.95] as const;
+export const SNAP_POINTS = [0.3, 0.7, 0.95] as const;
 export type SnapPoint = (typeof SNAP_POINTS)[number];
 
 /**
  * The default snap on open. M1 DoD says "Tapping a POI opens a Drawer
- * (bottom sheet) at the half snap." Half = 0.6.
+ * (bottom sheet) at the half snap." Half = 0.7 post-PR4-fixup.
  */
-export const DEFAULT_SNAP: SnapPoint = 0.6;
+export const DEFAULT_SNAP: SnapPoint = 0.7;
 
 /**
  * The fade-from-index for Vaul's overlay fade. Vaul fades the overlay in
@@ -152,6 +161,29 @@ export type PoiDrawerProps = {
    * can rely on a `number | null` shape).
    */
   onSnapChange?: (snap: number | null) => void;
+  /**
+   * Optional controlled active-snap. When provided, the parent owns the
+   * snap state (e.g. for the M1 PR4-fixup travel choreography: snap to
+   * peek when the player taps "Travel here", snap back to half on
+   * arrival). When omitted, the drawer manages snap state internally and
+   * starts at DEFAULT_SNAP on open. Pass `null` for closed-state
+   * representation if you want; the wrapper short-circuits null + open
+   * combinations to DEFAULT_SNAP defensively.
+   */
+  activeSnapPoint?: number | null;
+  /**
+   * Whether the avatar is currently at this POI. Drives the action-button
+   * copy and disabled state: "You're here" + disabled when true,
+   * "Travel here" + active when false. Default false.
+   */
+  isAtPoi?: boolean;
+  /**
+   * Tap handler for the Travel-here button. Fires only when the avatar
+   * is *not* at this POI (i.e. when the button reads "Travel here"). The
+   * parent handles drawer-snap choreography and the fast-travel
+   * animation; the drawer is just the surface.
+   */
+  onTravel?: () => void;
 };
 
 type TypePillMeta = {
@@ -172,30 +204,39 @@ const TYPE_PILL_META: Record<PoiMarkerType, TypePillMeta> = {
   market: { icon: ShoppingBasket, label: "Market" },
 };
 
-export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
+export function PoiDrawer({
+  poi,
+  onOpenChange,
+  onSnapChange,
+  activeSnapPoint: activeSnapPointProp,
+  isAtPoi = false,
+  onTravel,
+}: PoiDrawerProps) {
   const open = poi !== null;
 
   // Vaul's snap-point state. `null` is the closed state; on open, Vaul
-  // initializes to `DEFAULT_SNAP` (half) per the M1 DoD contract. We hold
-  // the snap in component state so the parent can subscribe via the
-  // `onSnapChange` prop without owning Vaul's internal driver.
+  // initializes to `DEFAULT_SNAP` (half) per the M1 DoD contract.
   //
-  // The state intentionally lives here, not in the parent: keeping snap-
-  // tracking encapsulated means the parent only sees the "what snap is
-  // active" signal it needs (for re-deriving panTo offsets), not the
-  // controlled-component machinery for Vaul. If a future PR needs the
-  // parent to *force* a snap programmatically (e.g. NPC dialogue forcing
-  // full snap), we can promote this to a controlled prop then.
-  const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(
+  // M1 PR4-fixup: snap is now optionally controllable from the parent
+  // (the parent uses this for travel choreography — peek during travel,
+  // half on arrival). When `activeSnapPointProp` is `undefined`, we run
+  // in uncontrolled mode and own the state ourselves; when it's a
+  // number (or explicit null), we mirror the parent's value into Vaul.
+  // Either way, drag/snap interactions still flow through Vaul's own
+  // setActiveSnapPoint → notifySnap → parent.onSnapChange path so the
+  // parent can react to user-initiated drags.
+  const [internalSnap, setInternalSnap] = useState<number | string | null>(
     DEFAULT_SNAP,
   );
+  const isControlled = activeSnapPointProp !== undefined;
+  const activeSnapPoint = isControlled ? activeSnapPointProp : internalSnap;
 
   // Forward to parent. We coerce to `number | null` because the
   // SNAP_POINTS constants are numbers; the union with string is just
   // Vaul's signature. If a future ADR adds px-string snaps, this is the
   // place to widen the parent contract.
   const notifySnap = (snap: number | string | null) => {
-    setActiveSnapPoint(snap);
+    if (!isControlled) setInternalSnap(snap);
     if (typeof snap === "number" || snap === null) {
       onSnapChange?.(snap);
     } else {
@@ -216,12 +257,24 @@ export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
     if (!nextOpen) {
       // Reset internal state and notify the parent. Without this the
       // next open would inherit the last drag position; we want every
-      // open to start at half.
-      setActiveSnapPoint(DEFAULT_SNAP);
+      // open to start at half. (No-op in controlled mode; the parent
+      // owns the snap and will reset it as part of its own close logic.)
+      if (!isControlled) setInternalSnap(DEFAULT_SNAP);
       onSnapChange?.(null);
     }
     onOpenChange(nextOpen);
   };
+
+  // When the parent flips `isAtPoi` (avatar arrived), make sure the
+  // internal mirror tracks any controlled-mode snap-back. This is a
+  // no-op in uncontrolled mode and exists purely so that downstream
+  // observers (the rendered Vaul tree) get a consistent number even
+  // if the parent misses a re-render. Idempotent.
+  useEffect(() => {
+    if (isControlled && typeof activeSnapPointProp === "number") {
+      setInternalSnap(activeSnapPointProp);
+    }
+  }, [isControlled, activeSnapPointProp]);
 
   // We render the Drawer with a stable `key={poi?.slug}` so that switching
   // from one POI to another (without an intermediate close) gives a fresh
@@ -253,7 +306,7 @@ export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
       key={poi?.slug ?? "closed"}
       // Three snap points per §6.3. Vaul accepts the array as a fraction
       // of the screen height (0..1). The order is least-visible →
-      // most-visible (peek 0.3 → half 0.6 → full 0.95).
+      // most-visible (peek 0.3 → half 0.7 → full 0.95).
       snapPoints={[...SNAP_POINTS]}
       activeSnapPoint={activeSnapPoint}
       setActiveSnapPoint={notifySnap}
@@ -262,6 +315,19 @@ export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
       // `modal=true` — the fade target is the full snap.
       fadeFromIndex={FADE_FROM_FULL_INDEX}
       modal={false}
+      // M1 PR4-fixup: restrict drag to the visible drag handle only.
+      // Real-phone testing showed that dragging the drawer downward
+      // from its bottom edge (with the body content as the drag
+      // target) reached into the iOS home-indicator gesture zone and
+      // accidentally closed the app — §12.5 lists this gesture
+      // conflict as a rejection criterion. With `handleOnly`, drag
+      // originates from the small handle pill at the top of the
+      // sheet, well above the indicator zone. The body becomes
+      // tap-only / scroll-only — clearer gesture vocabulary
+      // (predictable beats clever per §6.2) and lets us put a
+      // "Travel here" button in the body without it competing with
+      // a drag affordance.
+      handleOnly
     >
       {/*
        * Custom cozy backdrop, painted only at the full snap. Sibling to
@@ -332,7 +398,32 @@ export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
         // consumers keep the default unless they opt in to a cozy
         // override of their own.
         className={cn(
-          "data-[vaul-drawer-direction=bottom]:max-h-[95svh]",
+          // M1 PR4-fixup: pin the drawer content to a fixed `95svh`
+          // height (was `max-h-[95svh]` with `h-auto`).
+          //
+          // *Why fixed and not auto?* Vaul's snap-point math is
+          // viewport-relative, not content-relative: at snap=0.7 it
+          // applies `translate3d(0, (1-0.7)*viewport_height, 0)` to the
+          // content box. With `h-auto`, the box's natural height = sum
+          // of its children; the translate then pushes the bottom of
+          // a short box (e.g. 400px content with bottom:0) below the
+          // viewport, leaving only ~140px visible at half snap. With a
+          // fixed `h-[95svh]`, the box is taller than the snap-shown
+          // region; the translate moves it just enough that the *top*
+          // of the box sits at `(1-snap) * vh` from viewport top, and
+          // the natural-flow content (header + description + button)
+          // packs into the visible upper region of the box. The
+          // remainder of the box below the natural content is empty
+          // and offscreen — fine.
+          //
+          // shadcn's primitive ships `mt-24` on bottom-direction
+          // content (a desktop-style "leave 6rem of map peeking above
+          // the sheet" affordance). Combined with our explicit
+          // `h-[95svh]` and `bottom:0`, mt-24 over-constrains the box
+          // and sets an explicit `top` from the margin which clashes
+          // with Vaul's snap-translate. Zero it.
+          "data-[vaul-drawer-direction=bottom]:mt-0",
+          "data-[vaul-drawer-direction=bottom]:h-[95svh]",
           "data-[vaul-drawer-direction=bottom]:rounded-t-3xl",
           "data-[vaul-drawer-direction=bottom]:border-t-0",
           // Upward warm-tinted shadow. y=-8px, blur=24px, foreground @
@@ -359,41 +450,74 @@ export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
         data-testid="poi-drawer-content"
       >
         {/*
-         * Cozy drag-handle. The shadcn primitive renders its own default
-         * handle as the first child of `DrawerContent` (mx-auto mt-4 h-1
-         * w-[100px] bg-muted); we hide it via the `[&>div:first-child]:
-         * hidden` class on DrawerContent above and render a visually-tuned
-         * replacement here. The primitive itself stays untouched so other
-         * future drawers (settings, journal, NPC dialogue) keep the
-         * default unless they opt in to a cozy override of their own.
+         * Cozy drag-handle, now via Vaul's `<Drawer.Handle>` (re-exported
+         * from the shadcn wrapper as `DrawerHandle`). With `handleOnly`
+         * on the Root, this is the *only* surface that initiates drag —
+         * Vaul's content-level drag listeners short-circuit and only the
+         * Handle's onPointerDown calls into the drag machinery. The
+         * Handle is also a tap target: a tap cycles snap points (the
+         * standard iOS-cozy bottom-sheet affordance), and a tap on the
+         * full snap dismisses the sheet — both inherited from Vaul.
          *
-         *  - 36px wide × 4px tall (`w-9 h-1`) — tighter than the
-         *    primitive's 100px so the handle reads as a discreet grip,
-         *    not a UI banner. The brief's spec.
-         *  - `bg-muted-foreground/40` — the muted-foreground tone at 40%
-         *    alpha. Reads warm against the cozy paper background, not
-         *    pure grey. Picks up the warm hue from `--muted-foreground`
-         *    (oklch ~ 0.46 hue 75 light / 0.72 hue 78 dark) so the
-         *    handle stays cozy in both schemes.
-         *  - `top-2.5` (10px from the sheet's top edge) leaves ~12px of
-         *    breathing room above the body content area below.
-         *  - `pointer-events-none` because Vaul's drag mechanism is bound
-         *    to the sheet's content edge, not specifically to the visual
-         *    handle pill. The visual handle is decoration over a
-         *    draggable region; suppressing pointer events on our overlay
-         *    avoids interfering with Vaul's drag detection.
+         * Visual treatment matches the previous cozy handle:
+         *  - 36px wide × 4px tall (`w-9 h-1`) — tighter than Vaul's
+         *    default 32×6 so the handle reads as a discreet grip, not a
+         *    UI banner. (We pass `bg-transparent` to the wrapper, then
+         *    paint our own warm tint via the inner `[&>span]:bg-...`
+         *    selector — Vaul renders an inner span as the visible
+         *    pill.)
+         *  - `bg-muted-foreground/40` — warm muted-foreground tone at
+         *    40% alpha; cozy in both light and dark schemes.
+         *  - `top-2.5` (10px from sheet top) leaves ~12px of breathing
+         *    room above the body content area.
+         *  - The wrapper itself receives the click target; Vaul renders
+         *    an inner `<span data-vaul-handle-hitarea>` for the actual
+         *    interaction zone. We size the wrapper at h-6 so the
+         *    invisible hit area is a comfortable 24px tall (exceeds
+         *    finger-friendly minimums; the visible pill is 4px tall
+         *    and centered inside).
          */}
-        <div
-          aria-hidden="true"
+        <DrawerHandle
           data-testid="poi-drawer-handle"
           className={cn(
-            "pointer-events-none absolute left-1/2 top-2.5 z-10",
+            "absolute left-1/2 top-1 z-10 flex items-center justify-center",
             "-translate-x-1/2",
-            "h-1 w-9 rounded-full",
-            "bg-muted-foreground/40",
+            // Comfortable invisible hit area; the visible pill inside
+            // is the 4×36 grip. Tap-target floor (§6.2) is satisfied
+            // by the wrapper hit area, not the visual.
+            "h-6 w-16",
+            // Vaul wraps children in `<span data-vaul-handle-hitarea>`.
+            // Force that span to fill the wrapper so the visible pill
+            // child centers correctly against the wrapper's flex
+            // container.
+            "[&>span]:flex [&>span]:h-full [&>span]:w-full",
+            "[&>span]:items-center [&>span]:justify-center",
           )}
-        />
-        {poi ? <PoiDrawerBody poi={poi} /> : null}
+        >
+          {/*
+           * Visible cozy pill. Lives inside Vaul's auto-rendered
+           * `<span data-vaul-handle-hitarea>` (Vaul's Handle wraps
+           * `children` in that span). The outer DrawerHandle div is
+           * what carries the click + drag handlers — pointer events
+           * bubble from this pill up through the hitarea span to the
+           * wrapper, so this child needs no special pointer-events
+           * config.
+           */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "block h-1 w-9 rounded-full",
+              "bg-muted-foreground/40",
+            )}
+          />
+        </DrawerHandle>
+        {poi ? (
+          <PoiDrawerBody
+            poi={poi}
+            isAtPoi={isAtPoi}
+            onTravel={onTravel}
+          />
+        ) : null}
       </DrawerContent>
     </Drawer>
   );
@@ -403,41 +527,76 @@ export function PoiDrawer({ poi, onOpenChange, onSnapChange }: PoiDrawerProps) {
  * Internal: the sheet content. Split from the Drawer wrapper so the body's
  * "what to render when poi is null" logic is just `null` at the wrapper
  * level — Vaul still mounts the portal during close-out animation.
+ *
+ * Layout order (M1 PR4-fixup, owner-tuned after real-phone testing):
+ *   1. Name (DrawerTitle)
+ *   2. Type pill
+ *   3. Open hours (Clock + line) — practical info, lands above the fold
+ *      at the half snap so the player can answer "is it open?" without
+ *      dragging.
+ *   4. Description (DrawerDescription) — literary prose, sits below the
+ *      fold; the player scrolls inside the body to read it. The body
+ *      wrapper has `overflow-y-auto touch-pan-y` so this is reachable
+ *      with a thumb-pull on the body content (drag-to-snap is on the
+ *      handle only via `handleOnly`, so vertical scroll inside the body
+ *      doesn't compete with snap dragging).
+ *   5. Travel-here / You're-here button — tail of the read-flow, full
+ *      width, the natural action affordance after reading.
  */
-function PoiDrawerBody({ poi }: { poi: Poi }) {
+function PoiDrawerBody({
+  poi,
+  isAtPoi,
+  onTravel,
+}: {
+  poi: Poi;
+  isAtPoi: boolean;
+  onTravel?: () => void;
+}) {
   const meta = TYPE_PILL_META[poi.type];
   const TypeIcon = meta.icon;
 
+  // The body is a flex column. DrawerContent is `h-auto max-h-[95svh]`
+  // so the box's natural height = sum of content rows. For typical POI
+  // content (header + openHours + ~3-line description + button) the
+  // natural height is ~350–450px which fits within the half-snap
+  // visible region at ~590px on a 844-tall viewport — the Travel
+  // button lands above the fold.
+  //
+  // For pathologically long descriptions, the description row is
+  // `overflow-y-auto` with a `max-h-[42svh]` cap (~50% of viewport at
+  // half snap, leaving room for header + openHours + button). The cap
+  // is the load-bearing trick: without it, a long description would
+  // push the button below the half snap.
+  //
+  // Layout (top→bottom):
+  //   - Header (DrawerHeader: Name + Type pill)
+  //   - Open hours (Clock + line)
+  //   - Description scroll region (max-h-capped, overflow-y-auto)
+  //   - Travel button
   return (
     <div
       className={cn(
-        // Outer padding: 16px base unit per §6.4. `pb-safe` handles the
-        // iOS home indicator so the open-hours line never sits under the
-        // home bar. `px-6` (24px) reads more breathable than the default
-        // `p-4` shadcn ships with for DrawerHeader. `pt-5` (20px) clears
-        // the cozy drag-handle (which sits at top-2.5 + h-1 = 14px from
-        // the sheet edge) with a 6px breathing margin before the title.
-        "flex flex-col gap-4 px-6 pb-6 pt-5",
-        // Bottom safe area on top of the explicit pb-6 — the gesture bar
-        // on Android adds variable padding too.
+        // Outer padding: 16px base unit per §6.4. `px-6` (24px) reads
+        // more breathable than the default `p-4` shadcn ships with for
+        // DrawerHeader. `pt-7` clears the cozy drag-handle (which sits
+        // at top-1 + h-6 = 28px from the sheet edge) with a small
+        // breathing margin before the title. Vertical gap between
+        // sections is owned by the children (`pb-4` on header/hours).
+        "flex flex-col px-6 pb-6 pt-7",
+        // Bottom safe area on top of the explicit pb-6 — the gesture
+        // bar on Android adds variable padding too.
         "pb-safe",
-        // Allow vertical scroll on long descriptions (Mercado da Ribeira's
-        // hours are nearly 80 chars). `touch-pan-y` instead of `auto` so
-        // we don't accidentally re-enable horizontal-pan inheritance from
-        // a future ancestor. `overflow-y-auto` only kicks in when content
-        // exceeds the cap.
-        "overflow-y-auto touch-pan-y",
       )}
       data-testid="poi-drawer-body"
     >
       <DrawerHeader
         className={cn(
-          // Override shadcn's default centered + small-gap header in favor
-          // of a left-aligned, slightly-roomier one — the bottom sheet on
-          // mobile reads as a card, not a dialog title bar. `p-0` because
-          // the parent body wrapper now owns the top breathing room (pt-5
-          // to clear the cozy drag-handle).
-          "flex flex-col items-start gap-2 p-0 text-left",
+          // Override shadcn's default centered + small-gap header in
+          // favor of a left-aligned, slightly-roomier one — the bottom
+          // sheet on mobile reads as a card, not a dialog title bar.
+          // `p-0` because the parent body wrapper now owns the top
+          // breathing room.
+          "flex flex-col items-start gap-2 p-0 pb-4 text-left",
           "md:text-left",
         )}
       >
@@ -476,35 +635,16 @@ function PoiDrawerBody({ poi }: { poi: Poi }) {
         </div>
       </DrawerHeader>
 
-      {/* Description — the cultural-review prose from M1 PR1, rendered
-          with care. `text-base` (16px) is the §6.4 minimum body size;
-          `leading-relaxed` (1.625) is the right line-height for cozy
-          paragraph-prose. `max-w-prose` caps line length around 65ch
-          (Tailwind default), well within the §6.4 30–55ch dialogue
-          bound's spirit when scaled up to descriptive prose. The
-          DrawerDescription primitive binds aria-describedby on the
-          dialog automatically. */}
-      <DrawerDescription
-        className={cn(
-          "max-w-prose text-base leading-relaxed text-foreground",
-          // shadcn's default DrawerDescription is `text-sm text-muted-foreground`.
-          // We override both: the description is the *primary content* of
-          // this sheet, not a subtitle, so it deserves full foreground
-          // colour and base size.
-        )}
-        data-testid="poi-drawer-description"
-      >
-        {poi.description}
-      </DrawerDescription>
-
-      {/* Open hours — small, muted, with a Clock icon. The brief calls for
-          "one line if it fits; wraps cleanly if not" — `items-start` so the
-          icon sits on the first line of a wrapped value rather than
-          centering itself against the wrapped block. `gap-2` is tight
-          enough to read as "icon + text", roomy enough to breathe. */}
+      {/* Open hours — small, muted, with a Clock icon. M1 PR4-fixup
+          reordered this *above* the description: practical info ("is it
+          open?") lands above the fold at the half snap, the literary
+          prose is below where the player scrolls for it. `items-start`
+          so the icon sits on the first line of a wrapped value rather
+          than centering itself against the wrapped block. `gap-2` is
+          tight enough to read as "icon + text", roomy enough to breathe. */}
       <div
         className={cn(
-          "flex items-start gap-2",
+          "flex items-start gap-2 pb-4",
           "text-sm leading-relaxed text-muted-foreground",
         )}
         data-testid="poi-drawer-open-hours"
@@ -516,6 +656,76 @@ function PoiDrawerBody({ poi }: { poi: Poi }) {
         />
         <span>{poi.openHours}</span>
       </div>
+
+      {/* Description scroll region. `overflow-y-auto` + `touch-pan-y`
+          lets the player drag-scroll the prose with a thumb without
+          the gesture being captured by Vaul (which is `handleOnly`
+          so body content does not initiate drawer drag). The
+          `max-h-[42svh]` cap is what keeps the Travel button visible
+          at the half snap when the description is unusually long: at
+          0.7 of an 844px viewport the visible region is ~590px;
+          header + openHours + safe-area bottom + button cluster takes
+          ~190px, leaving ~400px for the description. 42svh ≈ 354px
+          on a typical phone — comfortably under the budget. For
+          short descriptions (the common case) the cap is invisible
+          (the description hits its natural height first). Rendered
+          as a `<div>` via `asChild` so the scroll container is a
+          sensible block, not the primitive's `<p>` (a `<p>` with
+          flex/overflow is awkward to style and an a11y oddity).
+          DrawerDescription still binds aria-describedby on the
+          dialog automatically.
+          `text-base` (16px) is the §6.4 minimum body size; `leading-
+          relaxed` (1.625) is the right line-height for cozy paragraph-
+          prose. `max-w-prose` caps line length around 65ch. */}
+      <DrawerDescription
+        asChild
+        data-testid="poi-drawer-description"
+      >
+        <div
+          className={cn(
+            "max-h-[42svh] overflow-y-auto touch-pan-y",
+            "max-w-prose text-base leading-relaxed text-foreground",
+            // shadcn's default DrawerDescription is text-sm text-muted-
+            // foreground; we render the description as primary content
+            // here, so override both.
+          )}
+        >
+          {poi.description}
+        </div>
+      </DrawerDescription>
+
+      {/* Travel-here / You're-here action button. Pinned at the bottom
+          of the body via the flex column layout; sits below the
+          scrollable description so it's always visible at any snap.
+          Two states:
+            - "Travel here" (default variant) when the avatar is NOT at
+              this POI. Tapping fires `onTravel` (the parent runs the
+              snap-to-peek → fast-travel → snap-back-to-half
+              choreography).
+            - "You're here" (outline variant, disabled) when the avatar
+              IS at this POI. Same width so the layout doesn't shift;
+              the variant makes "press me" obviously not the affordance.
+          The button is rendered unconditionally — even without `onTravel`
+          wired (e.g. unit-test render of just the drawer), the button
+          shows. The `disabled` prop covers the "no handler" case so a
+          stray tap is a no-op.
+          `mt-4` carries the inter-row gap that gap-4 would have given
+          us if the column were `gap-4` (we own gaps per-row instead so
+          the description's flex-1 stretches against fixed siblings
+          cleanly). `shrink-0` keeps the button at its natural height
+          even if the column is short on space at small snaps. */}
+      <Button
+        type="button"
+        size="lg"
+        variant={isAtPoi ? "outline" : "default"}
+        disabled={isAtPoi || !onTravel}
+        onClick={onTravel}
+        className="mt-4 w-full"
+        data-testid="poi-drawer-travel-button"
+        data-state={isAtPoi ? "at-poi" : "not-at-poi"}
+      >
+        {isAtPoi ? "You're here" : "Travel here"}
+      </Button>
     </div>
   );
 }

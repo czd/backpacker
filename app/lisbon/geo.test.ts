@@ -161,44 +161,46 @@ describe("lerp", () => {
 });
 
 describe("travelDurationMs", () => {
-  it("clamps the floor to 1600ms (≥1 traveling-pulse cycle)", () => {
-    // A 0km trip would compute to 800ms linear — clamped to 1600ms so the
-    // traveling pulse plays at least one full cycle.
-    expect(travelDurationMs(0)).toBe(1600);
-    // 1km computes to 1100ms linear → still floored to 1600ms.
-    expect(travelDurationMs(1)).toBe(1600);
-    // The crossover is around 2.67km (800 + 300*2.67 ≈ 1600).
-    expect(travelDurationMs(2.5)).toBe(1600);
+  // Owner-tuned 2026-05-03 after real-phone testing: pure proportional
+  // (distKm × 600), no floor, no cap. The previous clamps (max 1600 /
+  // min 3000) made short hops feel slow and the airport leg feel like
+  // running. See PR4-fixup commit message for the full rationale.
+
+  it("is pure proportional: distKm × 600 with no floor or cap", () => {
+    // Identity at zero — degenerate but documented.
+    expect(travelDurationMs(0)).toBe(0);
+    // 1km → 600ms.
+    expect(travelDurationMs(1)).toBe(600);
+    // 5km → 3000ms.
+    expect(travelDurationMs(5)).toBe(3000);
+    // 10km → 6000ms (would have been capped to 3000ms under the old
+    // formula; now it's allowed to feel as long as the distance does).
+    expect(travelDurationMs(10)).toBe(6000);
+    // Short hops are no longer floored: 0.5km → 300ms.
+    expect(travelDurationMs(0.5)).toBe(300);
   });
 
-  it("uses the linear formula in the middle band", () => {
-    // 3km → 800 + 300*3 = 1700ms.
-    expect(travelDurationMs(3)).toBe(1700);
-    // 5km → 800 + 300*5 = 2300ms.
-    expect(travelDurationMs(5)).toBe(2300);
-  });
-
-  it("clamps the cap to 3000ms (no slog)", () => {
-    // 10km → 3800 linear → capped at 3000.
-    expect(travelDurationMs(10)).toBe(3000);
-    expect(travelDurationMs(50)).toBe(3000);
-    // The crossover at the top is ~7.33km (800 + 300*7.33 ≈ 3000).
-    expect(travelDurationMs(8)).toBe(3000);
-  });
-
-  it("airport → hostel duration is in the 2.5–3.0s band (per brief)", () => {
-    // Brief's table: ~2720ms. Allow the actual computed haversine to
-    // produce its own value rather than hard-coding the brief's rounding.
+  it("airport → hostel duration is ~3.8s (was clamped to 3.0s)", () => {
+    // ~6.4km × 600 = ~3840ms. Allow a window for the actual haversine
+    // value vs. the brief's rounding.
     const km = haversineKm(AIRPORT, HOSTEL);
     const ms = travelDurationMs(km);
-    expect(ms).toBeGreaterThanOrEqual(2500);
-    expect(ms).toBeLessThanOrEqual(3000);
+    expect(ms).toBeGreaterThan(3600);
+    expect(ms).toBeLessThan(4100);
   });
 
-  it("short central-Lisbon legs are floored to 1600ms (per brief)", () => {
-    // Brief: hostel → castle/miradouro/mercado all clamp to 1600ms.
-    expect(travelDurationMs(haversineKm(HOSTEL, CASTELO))).toBe(1600);
-    expect(travelDurationMs(haversineKm(HOSTEL, MIRADOURO))).toBe(1600);
-    expect(travelDurationMs(haversineKm(HOSTEL, MERCADO))).toBe(1600);
+  it("short central-Lisbon legs are sub-second (was 1600ms floor)", () => {
+    // Brief: hostel → castle ~0.6 km → ~360ms.
+    const castle = travelDurationMs(haversineKm(HOSTEL, CASTELO));
+    expect(castle).toBeGreaterThan(200);
+    expect(castle).toBeLessThan(600);
+    // hostel → miradouro ~0.7 km → ~420ms.
+    const miradouro = travelDurationMs(haversineKm(HOSTEL, MIRADOURO));
+    expect(miradouro).toBeGreaterThan(300);
+    expect(miradouro).toBeLessThan(700);
+    // hostel → mercado ~1.0 km → ~600ms.
+    const mercado = travelDurationMs(haversineKm(HOSTEL, MERCADO));
+    expect(mercado).toBeGreaterThan(400);
+    expect(mercado).toBeLessThan(900);
   });
 });
