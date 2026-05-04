@@ -71,7 +71,16 @@ Per AGENTS.md §9.3, must land before the named PR merges:
 - ADR-010 (structured POI availability schema) — Accepted.
 - M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
 
-### Next: dispatch PR6
+### Next: dispatch PR7
+
+PR6 landed (commit `d7a39b9`) + dynamic-next-open-time bug fix (`59c16be`):
+- New `app/lisbon/timed-advance.ts` — `startTimedAdvance(options)` helper that owns the rAF + accumulator + `document.hidden` gate pattern. Caller provides `rate`, `onMinuteCommitted`, plus either `shouldContinue` (travel mode, runs until external false) OR `totalMinutes` + `onComplete` (linger mode, runs to cap then completes). Throws on misconfiguration (developer boundary defense).
+- Travel `useEffect` and `handleLinger` rAF loop in `lisbon-map.tsx` now call the helper. Net −53 lines (70 insertions, 123 deletions).
+- Reduced-motion stays in callers (jump-cut bypasses helper). Store mutations stay in callers (composable: PR8 metro/taxi won't drain; PR7 mini-game adds flat 0.05 in `onComplete`).
+- 8 new vitest tests (suite total **324**); zero size-limit delta.
+- The helper is the canonical embodiment of ADR-005's amendment ("callers driving advance() from a continuous source own the fractional accumulator"). PR7 (mini-game) and PR8 (busking) will consume — preventing the rounding-to-zero bug that the amendment exists to prevent from re-introducing as PR7 forks an independent loop.
+
+Earlier this session — `59c16be` (dynamic-next-open bug fix) wired `nextOpenMinute` + `formatHourMinute` pure helpers into `linger-verbs.ts`'s closed-state label. Real bug from owner real-phone testing: castle's "09:00" was right by coincidence; mercado's "09:00" was wrong (mercado reopens at 10:00). Now dynamic per `availability.ranges`. The static `CLOSED_AT_NIGHT_LABEL` is retired.
 
 PR5 landed (commit `2646858`):
 - `<WalletChip />` top-left adjacent to clock — lucide `Wallet` glyph (line-stroke family match), `text-muted-foreground` (avatar owns primary teal; wallet is supporting context), Fraunces digits with tabular numerals, plain `€NN` text. **No phase tint** (the clock's tint signals time-of-day; wallet has no equivalent semantic — argued in code).
