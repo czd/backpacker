@@ -71,7 +71,20 @@ Per AGENTS.md §9.3, must land before the named PR merges:
 - ADR-010 (structured POI availability schema) — Accepted.
 - M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
 
-### Next: dispatch PR3
+### Next: dispatch PR4
+
+PR3 landed (commit `2795cca`) + post-PR3 fix (`cb34894`):
+- `convex/schema.ts` extended with optional `availability` field on `pois` per ADR-010 exact shape (days + ranges + optional seasonal).
+- `convex/seed.ts` rewritten as idempotent + patch-only migration: castle gets seasonal Mar–Oct 09:00–21:00 / Nov–Feb 09:00–18:00; mercado gets 10:00–24:00 base. Hostel/airport/miradouro stay availability-absent (24/7 default preserved).
+- `app/lisbon/availability.ts` new pure helper `isOpenNow(availability, em, options)` — handles 24/7 default, seasonal override, year-wrap (Nov–Feb), midnight-wrap (open 22:00 close 02:00), days-of-week filter (null at M2). 49 boundary tests.
+- `app/lisbon/game-clock-store.ts` gets `monthOf(em)` derived getter per ADR-010's 365-day abstraction. 9 boundary tests.
+- `app/lisbon/linger-verbs.ts` rewritten — signature changed `(type, em)` → `(poi: Doc<"pois">, em)`; consults `isOpenNow` for the open/closed gate; `ALWAYS_OPEN_TYPES` const **retired**. Hostel keeps per-type Sleep override.
+- 76 new vitest assertions (suite total **264**); both routes still well under size-limit ceilings.
+- Largo do Carmo's PR8 hand-off shape (`{ ranges: [{ open: 360, close: 1320 }] }` for 06:00–22:00) is already covered by `availability.test.ts` and `linger-verbs.test.ts` as the hand-off proof — the structured schema now expresses what the M1 hardcoded type rule could not.
+
+**Owner action post-merge:** run `bunx convex run seed:seedLisbon` to migrate existing rows. Mutation is idempotent + patch-only (uses `db.patch`, not `db.replace`); only the rows whose `availability` differs from the seed get patched. Re-run reports `patched: 0, skipped: 5`.
+
+**Real-phone bugfix piggybacked (`cb34894`):** avatar `<Marker>` wrapper now has `pointerEvents: "none"`. Owner reported clicks on POI markers underneath the avatar were getting intercepted by the wrapper after PR4-fixup-3's z-index lift made it sit on top. Inner `<AvatarMarker>` had `pointer-events-none` but the react-map-gl wrapper needed it too. Avatar stays visible; clicks pass through. Avatar is non-interactive by design (recenter via button, not tap).
 
 PR2 landed (commit `cc0a351`):
 - `usePlayerStore` Zustand slice sibling to `useGameClockStore` per ADR-007 / ADR-008.
