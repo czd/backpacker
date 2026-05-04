@@ -71,7 +71,17 @@ Per AGENTS.md §9.3, must land before the named PR merges:
 - ADR-010 (structured POI availability schema) — Accepted.
 - M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
 
-### Next: dispatch PR5
+### Next: dispatch PR6
+
+PR5 landed (commit `2646858`):
+- `<WalletChip />` top-left adjacent to clock — lucide `Wallet` glyph (line-stroke family match), `text-muted-foreground` (avatar owns primary teal; wallet is supporting context), Fraunces digits with tabular numerals, plain `€NN` text. **No phase tint** (the clock's tint signals time-of-day; wallet has no equivalent semantic — argued in code).
+- `<TiredChip />` standalone chip (Option B), appears only when `restedBand(rested) === 'tired'`. Lucide `Moon` (matches the clock's night-phase glyph for cozy resonance — "the HUD speaks one visual language about sleep, whether the world's sleeping or you are"). `text-primary` accent (the lone explicit ADR-008 signal earns the lead color). 250ms fade in/out at the 0.33 boundary; reduced-motion = instant.
+- Layout: clock + wallet on row 1 top-left; tired chip on row 2 below wallet when relevant; recenter stays right. After computing actual chip widths, three-on-one-row would crowd 390px.
+- Toast: inline bubble anchored directly below the tired chip (locality > §6.3's bottom-of-screen default for this affordance — reads as the player's own note-to-self, not a system alert). Auto-dismisses 3s; one-toast-at-a-time.
+- WCAG AA cleared comfortably (digits 11:1 / 10:1, primary glyph 4.9:1 / 5.9:1 across light + dark phases).
+- Whimsy Injector NOT invoked — UI Designer judged choices obvious enough; M5 Whimsy hooks left as stable seams (`data-cents` for income/expense pulse; toast as own `motion.div` for register polish).
+- 23 new vitest assertions (suite total **297**); 6 new e2e (suite total **48**); zero size-limit delta on both routes.
+- **Side-branch correction:** UI Designer initially committed to `feat/m2-pr5-hud-wallet-tired`; fast-forwarded onto `feat/m2-energy-jobs` and deleted the side-branch. M2 stays one-branch.
 
 PR4 landed (commit `26cb9bb`):
 - `LingerVerb` type extended with optional `cost` (cents). Hostel branch sets `cost: 1800` (€18 per ADR-007); other verbs leave it absent.
