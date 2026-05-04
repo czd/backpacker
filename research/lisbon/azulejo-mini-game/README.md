@@ -2,7 +2,7 @@
 topic: azulejo-mini-game
 city: lisbon
 milestone: M2 PR7
-status: discovery-complete; master name locked (Mestra Fernanda Bastos, 2026-05-04)
+status: UI Designer pass complete (2026-05-04); ready for FD pending 3 owner picks
 date-opened: 2026-05-03
 related-adrs: [ADR-009 (mini-game failure semantics)]
 related-bullets-in-status: [PR7 cultural-content review hooks]
@@ -108,9 +108,25 @@ Alternative success: ***"Boa."*** (single-syllable; reads slightly flat without 
 - **Colonial empire honest hook**: *"This panel was paid for by Brazilian gold. The artist who painted it never asked where the money came from."* — the 18th c. blue-and-white "golden age" was materially funded by extracted-Brazilian-gold (post-1690s Minas Gerais strikes financed João V's building boom that commissioned the Master Cycles). Honest, not preachy
 - **Daily rhythm hook (M3+ optional)**: master only leaves panels Tuesday–Saturday, not Sundays — Lisboeta workshops genuinely close Sundays and Monday mornings. Could become a real daily-rhythm beat at M3+; not a M2 commitment
 
-## UI Designer load-bearing render details (from both agents)
+## UI Designer resolution (2026-05-04) — FD's substrate
 
-When implementing panel imagery (separate slice; uses the references above):
+**The full UI spec lives in [ui-designer-2026-05-04.md](./ui-designer-2026-05-04.md).** That file is what Frontend Developer reads at PR7 dispatch — locked palette tokens (16 OKLCH swatches), tile motifs (acanthus volute / *ponta de diamante*), wear-pattern recipes, motion spec (Framer Motion spring constants + reduced-motion alternatives), screen architecture (390×844 + 360×640 reflow), reusable-primitive boundaries (`<MiniGameShell />` flagged as future-pattern for Tokyo+), Whimsy seams (M5 deferred), and the test surfaces (data-attrs / aria) FD wires up.
+
+The headlines from that resolution:
+
+- **Reference panels:** *Vida de Santa Clara* upper-cloister (Madre de Deus, c. 1700–1710, Bernardes-school) for blue-and-white Panel 1; lower-cloister polychrome dado (Madre de Deus, c. 1660–1680) for Panel 2. **Same building, two eras** — anchors the master's MNAz training-institution backstory hook.
+- **Tile motifs (locked):** *acanthus volute corner* fragment (Panel 1) over putto-hand or architectural-plinth alternatives; *ponta de diamante* unit cell (Panel 2) over *maçaroca* — the geometric module's 2×2 repeat fits the 4×4 grid as four exact module repeats, making the mini-game a *pattern continuation* puzzle.
+- **Workshop = implied, not illustrated.** Lime-washed-wall texture + soft warm vignette over the existing `--background` token. The wooden tile tray IS the *Banco do Azulejo* sorting tray.
+- **Pickup line + success stamp:** rendered in **Caveat** (the project's existing handwritten font, finally load-bearing). Pickup note as physical-pinned-paper at −3°. Success stamp as ink-pressed at +5° with spring-bounce motion.
+- **Leave button:** lucide `ArrowLeft` (NOT `X` — `X` lies about the no-penalty contract; per ADR-009 tiles persist for resume).
+- **Soft-break prompt** at 3 real min: Vaul Drawer at half-snap, framed as a handwritten note from the master, NOT a system dialog. **Owner picks copy register A vs B (see open questions below).**
+- **Three-band rested rendering finally renders:** snap tolerance 12/10/8 px; hint pulse 600ms / 800ms / first-only — ADR-008 pattern lands as motion for the first time.
+- **Whimsy NOT invoked at PR7** (per the PR5 discipline). Six stable seams flagged for M5: tile-place sound, ink-fleck particle burst, ambient atelier loop, first-completion floating receipt, haptic on pickup, optional phase-tinted backdrop.
+- **`<MiniGameShell />` is the major architectural future-pattern.** PR7 ships the shell concretely inside `app/lisbon/jobs/azulejo/`; M5+ Tokyo dispatch lifts it out into `lib/mini-game/`. The shell carries leave button + handwritten note + soft-break drawer + success-stamp pattern.
+
+### Original render-detail substrate (from Anthropologist + Historian)
+
+The UI Designer's resolution above synthesizes these source materials. Preserved here so FD can trace any decision back to its cultural/historical anchor:
 
 - **Tile-to-tile color variation**: each tile slightly different cobalt saturation; antimony yellow that "burns out" first on aged panels (UI Designer can use this for authentic wear)
 - **Grout/mortar gaps**: visible in cream-grey aged tone (NEVER bright white); mortar is lime-based (*argamassa de cal*) with marble dust, not modern Portland cement
@@ -136,5 +152,6 @@ When implementing panel imagery (separate slice; uses the references above):
 See [bibliography.md](./bibliography.md) for the full citation list including Portuguese-language scholarship + canonical institutional references (Az Infinitum, MatrizNet/DGPC, Museu Nacional do Azulejo). Reference imagery in `/docs/images/pr7-azulejo/` (three Unsplash blue-and-white photos credited in `CREDITS.md` at repo root); polychrome references TBD when UI Designer takes over the panel imagery slice.
 
 Full agent reports preserved verbatim:
-- [anthropologist-2026-05-03.md](./anthropologist-2026-05-03.md)
-- [historian-2026-05-03.md](./historian-2026-05-03.md)
+- [anthropologist-2026-05-03.md](./anthropologist-2026-05-03.md) — cultural authenticity / register / pattern selection
+- [historian-2026-05-03.md](./historian-2026-05-03.md) — era boundaries / workshop framing / period detail / institutional anchors
+- [ui-designer-2026-05-04.md](./ui-designer-2026-05-04.md) — panel visuals (palette tokens, motifs, wear), workshop register, motion spec, screen architecture, primitives + Whimsy seams + test surfaces

@@ -21,13 +21,27 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 - **`AGENTS.md` §12.7 + §12.8** — research-capture discipline and credits-ledger discipline added as working agreements. §12.6 "supporting documents" extended.
 - **`CLAUDE.md`** doc set updated to surface `research/` and `CREDITS.md` so future sessions discover them at session start.
 
-### Next: dispatch PR7
+### Next: dispatch PR7 FD (3 owner picks first)
 
-Master name **locked: Mestra Fernanda Bastos** (owner sign-off 2026-05-04). Synthesis README updated. Ready to dispatch:
-1. **UI Designer first** — translate the PR7 discovery into actual panel imagery (border-fragment 18th c. blue-and-white + 17th c. *azulejo de tapete* polychrome) and the workshop visual register (Alfama atelier, *Banco do Azulejo* sorting trays, *cal hidráulica* mortar palette). Pass `research/lisbon/azulejo-mini-game/` as the substrate.
-2. **Frontend Developer second** — implement the 4×4 drag-place mechanic per ADR-009 (leave-button safe-area top-left + soft "take a break?" prompt at 3 real min + €15 payout + 0.05 rested drain on completion). The shared `startTimedAdvance` helper from PR6 is the timing primitive.
+**UI Designer pass complete (2026-05-04).** Verbatim spec at `research/lisbon/azulejo-mini-game/ui-designer-2026-05-04.md`; synthesis README updated; bibliography unchanged. The spec is FD's substrate — 16 locked OKLCH palette tokens, two locked tile motifs (*acanthus volute corner* + *ponta de diamante*), motion spec with Framer Motion spring constants + reduced-motion alternatives, screen architecture at 390×844 with 360×640 reflow, reusable-primitive boundaries (`<MiniGameShell />` flagged as the major future-pattern for Tokyo+), Whimsy seams (M5 deferred), test-surface attrs (data-testid + aria).
+
+**3 owner picks before FD dispatch:**
+
+1. **Soft-break prompt copy register: A or B?** (UI Designer recommends A.)
+   - A: *"You've been at this a while. Take a break — pick it up tomorrow if you want."* — warmer, parental-protective; carries Mestra's ~65yo register without being maternal-condescending
+   - B: *"Long enough for now. Want to leave it? The tiles will keep."* — terser, more master-register; closer to *Está bom assim*'s clipped voice but reads colder for a break-prompt where warmth IS the point
+2. **Pickup-note rotation direction** — UI Designer committed to **−3°** (left-tilt) with note on top-right of panel and leave button on top-left. Owner can flip to +3° (right-tilt) if note placement should swap to top-left. UI Designer's recommendation: keep the −3°/top-right composition.
+3. **Phase-tint workshop backdrop at M5 (Whimsy seam #6)** — opt in or stay phase-agnostic? UI Designer recommends **phase-agnostic** (mini-game is "taken-out-of-time" per §5.1; the master's atelier has its own quality of light). Defer the actual decision to GD at M5; flagged here only because owner may have an instinct.
+
+**Cross-cutting flags surfaced by UI Designer:**
+
+- **Polychrome reference imagery still needs sourcing.** `docs/images/pr7-azulejo/` holds 3 Unsplash blue-and-white photos (Panel 1 substrate). Panel 2 polychrome needs 2–3 references — recommend Wikimedia Commons `Category:Azulejos de tapete` (Madre de Deus lower-cloister) under CC-BY/CC-BY-SA + `CREDITS.md` attribution, or MNAz online via matriznet.dgpc.pt with license verification.
+- **`.size-limit.cjs` `/lisbon/jobs/*` placeholder needs activation at PR7.** Recommended ceiling: **350 KB gzipped** (between splash 300 and world layer 400; mini-game route loads less than full map but more than splash). Per ADR-004 tiered-budget pattern.
+- **ADR-008 rested-band rendering verification.** PR7 is the *first* M2 component to render the three rested bands as motion (snap tolerance 12/10/8, hint pulse 600/800/first-only). FD's vitest suite should assert the three-band cadence as architectural verification of ADR-008's "felt-not-seen" principle.
+- **`<MiniGameShell />` future-pattern callout.** PR7 ships the shell concretely; M5+ Tokyo dispatch lifts it into `lib/mini-game/`. FD should structure with a `// FUTURE-PATTERN: M5+ Tokyo sushi shell parent` comment so the next dispatch finds it cleanly.
 
 ### Blocked on owner
+- 3 owner picks above (PR7 FD dispatch ready when locked).
 - `bunx convex run seed:seedLisbon` to migrate Convex rows with PR3's `availability` field (still queued from earlier session).
 
 ---
