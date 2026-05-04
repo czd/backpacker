@@ -23,10 +23,11 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ### Next: dispatch PR7
 
-Unchanged from previous entry. Waiting on owner sign-off for the master's name from the PR7 synthesis: **Mestra Fernanda Bastos** (recommended — woman, 60s, anchors against default-male-master assumption, *Bastos* is a recognizable Lisboa-region surname); alternatives **Mestre Joaquim Pinto** or **Mestre Joaquim Salgueiro**. Once chosen, dispatch UI Designer for panel imagery, then Frontend Developer for the mini-game mechanic.
+Master name **locked: Mestra Fernanda Bastos** (owner sign-off 2026-05-04). Synthesis README updated. Ready to dispatch:
+1. **UI Designer first** — translate the PR7 discovery into actual panel imagery (border-fragment 18th c. blue-and-white + 17th c. *azulejo de tapete* polychrome) and the workshop visual register (Alfama atelier, *Banco do Azulejo* sorting trays, *cal hidráulica* mortar palette). Pass `research/lisbon/azulejo-mini-game/` as the substrate.
+2. **Frontend Developer second** — implement the 4×4 drag-place mechanic per ADR-009 (leave-button safe-area top-left + soft "take a break?" prompt at 3 real min + €15 payout + 0.05 rested drain on completion). The shared `startTimedAdvance` helper from PR6 is the timing primitive.
 
 ### Blocked on owner
-- Master-name pick (PR7).
 - `bunx convex run seed:seedLisbon` to migrate Convex rows with PR3's `availability` field (still queued from earlier session).
 
 ---

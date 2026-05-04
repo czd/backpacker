@@ -2,7 +2,7 @@
 topic: azulejo-mini-game
 city: lisbon
 milestone: M2 PR7
-status: discovery-complete; awaiting owner sign-off on master name
+status: discovery-complete; master name locked (Mestra Fernanda Bastos, 2026-05-04)
 date-opened: 2026-05-03
 related-adrs: [ADR-009 (mini-game failure semantics)]
 related-bullets-in-status: [PR7 cultural-content review hooks]
@@ -72,21 +72,19 @@ Why this synthesis works:
 
 **Honest framing acknowledgment**: *Reabilitação Urbana* is structurally democratic-era (EU-funded, scientifically-disciplined via LNEC), but it's deeply entangled with the gentrification crisis (the *Lei das Rendas* of 2012, Golden Visa programme 2012–2023, AirBnB conversions). The same restoration that recovers an 18th c. panel often displaces the 80-year-old tenant who'd lived in the building since 1962. The fictional master-restorer carries this tension honestly — they restore tiles *and* the city they're restoring is one their own kids can't afford to live in. This is the M3-NPC complexity the BUILD-LOG already flagged. Cozy, not cozy-washed.
 
-### Master name — open question for owner
+### Master name — **LOCKED: Mestra Fernanda Bastos** (owner sign-off 2026-05-04)
 
-Three authentic candidates emerged. All defensible; pick one for M2 placeholder; M3 Narrative Designer polishes wording around whichever name lands:
+Owner accepted the Historian's default-female recommendation:
 
-| Candidate | Source agent | Notes |
-|---|---|---|
-| **Mestre Joaquim Salgueiro** | Anthropologist | Salgueiro = "willow," real Lisbon-region surname with no regional weight; Joaquim is on Historian's authentic-cohort list too |
-| **Mestre Joaquim Pinto** | Historian (default-male) | Pinto is solidly common-class without being clichéd |
-| **Mestra Fernanda Bastos** | Historian (default-female) | The field is *genuinely female-led at the senior conservation level*; defaults to female, avoids the Anglophone gravitational pull toward generic-male-craftsman; cohort-honest at age ~65 |
+- **Mestra Fernanda Bastos** — woman master-restorer, c. 65 in 2026. The Portuguese conservation field is *genuinely female-led at the senior level*; this anchors against the Anglophone gravitational pull toward generic-male-craftsman, is cohort-honest, and reads cozy-distinctive. *Bastos* is a recognizable Lisboa-region surname without being generic.
 
-**Recommendation: Mestra Fernanda Bastos.** It's the most cozy-distinctive AND statistically more honest about who runs Portuguese conservation work today. But it's the owner's call.
+Alternates considered (rejected for M2 ship; preserved for the historical record):
+- *Mestre Joaquim Salgueiro* (Anthropologist's default — Salgueiro = "willow," real Lisbon-region)
+- *Mestre Joaquim Pinto* (Historian's default-male — Pinto is solidly common-class)
 
-Avoid: any name with a *de* particle (nobility-coded), Spanish-coded names (*Lopes/Mendes* lean slightly Brazilian-Portuguese), names matching real public figures (don't accidentally name the master *Mário Soares*).
+The honorific **Mestra** (not *Sra.*) is correct register — what apprentices and clients actually call a workshop master in Portuguese trades, halfway between "Mr." and "Maestro." All M2 placeholder copy and M3 Narrative Designer voice work writes against this name.
 
-The honorific **Mestre/Mestra** (not *Sr./Sra.*) is correct register — what apprentices and clients actually call a workshop master in Portuguese trades, halfway between "Mr." and "Maestro."
+Avoid (preserved as guidance for future name additions): any name with a *de* particle (nobility-coded), Spanish-coded names (*Lopes/Mendes* lean slightly Brazilian-Portuguese), names matching real public figures (don't accidentally name a future NPC *Mário Soares*).
 
 ### Linguistic register — placeholder copy for M2; polish at M3
 
