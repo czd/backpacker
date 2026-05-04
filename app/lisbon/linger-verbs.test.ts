@@ -180,6 +180,18 @@ describe("lingerVerbFor — sight with seasonal availability (castle)", () => {
     expect(verb.enabled).toBe(false);
     expect(verb.label).toMatch(/closed/i);
   });
+
+  // Regression for the owner-found bug: castle's closed label
+  // happens to be "09:00" because that IS its next-open time —
+  // the previous hardcoded label was right by coincidence. This
+  // test pins the dynamic behavior so future POIs with different
+  // hours don't silently regress.
+  it("sight at 22:00 (just after 21:00 close) → label points at 09:00", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, 1320); // 22:00
+    expect(verb.label).toContain("09:00");
+    expect(verb.enabled).toBe(false);
+  });
 });
 
 describe("lingerVerbFor — market (Mercado da Ribeira)", () => {
@@ -221,6 +233,22 @@ describe("lingerVerbFor — market (Mercado da Ribeira)", () => {
     const poi = mockPoi({ type: "market", availability: mercadoAvailability });
     const verb = lingerVerbFor(poi, 600); // 10:00
     expect(verb.enabled).toBe(true);
+  });
+
+  // Regression for the owner-found bug: the closed-state label was
+  // hardcoded to "Closed — come back at 09:00" regardless of when the
+  // POI actually reopened. The mercado opens at 10:00, not 09:00.
+  it("market at 02:00 → label points at 10:00 (the actual next open)", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, NIGHT_0200);
+    expect(verb.label).toContain("10:00");
+    expect(verb.label).not.toContain("09:00");
+  });
+
+  it("market at 06:00 → label still points at 10:00", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, 360); // 06:00
+    expect(verb.label).toContain("10:00");
   });
 });
 

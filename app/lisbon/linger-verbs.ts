@@ -27,7 +27,7 @@
  */
 
 import type { Doc } from "../../convex/_generated/dataModel";
-import { isOpenNow } from "./availability";
+import { formatHourMinute, isOpenNow, nextOpenMinute } from "./availability";
 import { minutesUntilMorning, monthOf } from "./game-clock-store";
 
 export type LingerVerb = {
@@ -71,13 +71,29 @@ export type LingerVerb = {
 export const HOSTEL_NIGHT_COST_CENTS = 1800;
 
 /**
- * The "closed at night" copy. Reads as a soft refusal — the city has a
- * rhythm, and 02:00 is not when you browse the market. The M3 Narrative
- * Designer polish pass will refine this wording per the M1 GD review's
- * note; until then, "09:00" is the target wake-window the brief
- * specifies. Do not change in M2 PR3.
+ * Build the soft-refusal closed-state label, using the POI's actual next
+ * open time. Real-phone testing flagged the previous hardcoded
+ * "Closed — come back at 09:00" as wrong: castle's reopen happens to be
+ * 09:00 (so the hardcoded value was right), but mercado closes at 24:00
+ * and reopens at 10:00 (so the label said the wrong time). The dynamic
+ * version reads each POI's `availability.ranges` and formats the next
+ * open time as "HH:MM".
+ *
+ * Returns a placeholder "Closed" if the POI somehow has no resolvable
+ * next-open time (degenerate; shouldn't happen in seeded data — the
+ * type system permits an empty `ranges` array even though no shipped
+ * POI has one). M3 Narrative Designer polish refines the wording then.
  */
-const CLOSED_AT_NIGHT_LABEL = "Closed — come back at 09:00";
+function closedLabel(
+  availability: NonNullable<Doc<"pois">["availability"]>,
+  epochMinute: number,
+): string {
+  const next = nextOpenMinute(availability, epochMinute, {
+    monthOfYear: monthOf(epochMinute),
+  });
+  if (next === null) return "Closed";
+  return `Closed — come back at ${formatHourMinute(next)}`;
+}
 
 /**
  * Resolve the linger verb for a POI given the current game time.
@@ -123,8 +139,12 @@ export function lingerVerbFor(
   });
 
   if (!open) {
+    // `availability` is non-null here — `isOpenNow` returns true (always
+    // open) when it's undefined, so falling into this branch implies a
+    // structured availability is set on the POI.
+    const availability = poi.availability!;
     return {
-      label: CLOSED_AT_NIGHT_LABEL,
+      label: closedLabel(availability, epochMinute),
       // Quantum is meaningless when disabled, but pick 0 so an
       // accidental tap (the button is `disabled` so this shouldn't
       // happen) is a no-op rather than an unintended advance.

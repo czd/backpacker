@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { isOpenNow, type Availability } from "./availability";
+import {
+  formatHourMinute,
+  isOpenNow,
+  nextOpenMinute,
+  type Availability,
+} from "./availability";
 
 // Tests are pure boundary checks against `isOpenNow`. Per ADR-010 the
 // helper is the M2 PR3 retirement of the M1 hardcoded
@@ -296,5 +301,100 @@ describe("isOpenNow — Largo do Carmo busking window (M2 PR8 hand-off)", () => 
 
   it("04:00 → closed", () => {
     expect(isOpenNow(largo, 240)).toBe(false);
+  });
+});
+
+describe("formatHourMinute — pure HH:MM formatter", () => {
+  it("formats midnight as 00:00", () => {
+    expect(formatHourMinute(0)).toBe("00:00");
+  });
+
+  it("formats 09:00 (540) correctly", () => {
+    expect(formatHourMinute(540)).toBe("09:00");
+  });
+
+  it("formats 10:00 (600) correctly", () => {
+    expect(formatHourMinute(600)).toBe("10:00");
+  });
+
+  it("zero-pads single-digit hours and minutes", () => {
+    expect(formatHourMinute(65)).toBe("01:05");
+  });
+
+  it("formats 23:59 (1439) correctly", () => {
+    expect(formatHourMinute(1439)).toBe("23:59");
+  });
+
+  it("wraps values >= 1440 (1 day + 5 min → 00:05)", () => {
+    expect(formatHourMinute(1445)).toBe("00:05");
+  });
+
+  it("handles negative values via modulo trick", () => {
+    expect(formatHourMinute(-60)).toBe("23:00");
+  });
+
+  it("floors fractional inputs", () => {
+    expect(formatHourMinute(540.7)).toBe("09:00");
+  });
+});
+
+describe("nextOpenMinute — owner-bug-fix pure helper", () => {
+  // Per ADR-010 + the linger-verbs bug fix: closed-state labels need
+  // to point at the POI's *actual* next-open time, not a hardcoded
+  // 09:00. This helper resolves that minute deterministically.
+
+  const mercado: Availability = {
+    ranges: [{ open: 600, close: 1440 }], // 10:00–24:00
+  };
+
+  const castle: Availability = {
+    ranges: [{ open: 540, close: 1260 }], // 09:00–21:00 default
+    seasonal: {
+      startMonth: 11,
+      endMonth: 2,
+      ranges: [{ open: 540, close: 1080 }], // 09:00–18:00 winter
+    },
+  };
+
+  it("mercado at 02:00 → next open is 10:00 (600)", () => {
+    expect(nextOpenMinute(mercado, 120)).toBe(600);
+  });
+
+  it("mercado at 06:00 → next open is still 10:00", () => {
+    expect(nextOpenMinute(mercado, 360)).toBe(600);
+  });
+
+  it("mercado at 22:00 (currently open) → next open wraps to 10:00 next day", () => {
+    // The function returns the next open time regardless of whether
+    // the caller is currently open; semantically the caller wouldn't
+    // ask if they're open, but the function defends robustness.
+    expect(nextOpenMinute(mercado, 1320)).toBe(600);
+  });
+
+  it("castle at 22:00 → next open is 09:00 (540) tomorrow", () => {
+    expect(nextOpenMinute(castle, 1320)).toBe(540);
+  });
+
+  it("castle at 22:00 in winter (Dec) → still 09:00", () => {
+    // Seasonal override doesn't change the open time, only the close.
+    expect(nextOpenMinute(castle, 1320, { monthOfYear: 12 })).toBe(540);
+  });
+
+  it("castle at 02:00 → next open is 09:00 today", () => {
+    expect(nextOpenMinute(castle, 120)).toBe(540);
+  });
+
+  it("multi-range (lunch closure) at 13:30 → returns the afternoon open", () => {
+    const lunchClosed: Availability = {
+      ranges: [
+        { open: 540, close: 780 }, // 09:00–13:00
+        { open: 840, close: 1080 }, // 14:00–18:00
+      ],
+    };
+    expect(nextOpenMinute(lunchClosed, 810)).toBe(840); // 13:30 → 14:00
+  });
+
+  it("returns null for an empty ranges array (degenerate but defended)", () => {
+    expect(nextOpenMinute({ ranges: [] }, 720)).toBe(null);
   });
 });

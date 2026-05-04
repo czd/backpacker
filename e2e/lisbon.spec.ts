@@ -1035,23 +1035,29 @@ test.describe("/lisbon", () => {
       })
       .toBe("false");
 
-    // Re-set night because the travel advanced the clock past 22:00.
-    // We pin to 22:00 so the linger label assertion is deterministic.
+    // Pin to 02:00 (= 120 game-min-of-day) so the market — whose
+    // structured availability is 10:00–24:00 — is unambiguously closed.
+    // Pre-PR3 this test pinned 22:00 because the closure rule was a
+    // night-phase blanket that closed all non-hostel/transit/view POIs;
+    // post-PR3 the rule is per-POI and the market IS open at 22:00
+    // (within the 10:00–24:00 range). 02:00 is firmly closed.
     await page.evaluate(() => {
       const w = window as Window &
         typeof globalThis & {
           __gameClock?: { setEpochMinute: (m: number) => void };
         };
-      w.__gameClock?.setEpochMinute(1320);
+      w.__gameClock?.setEpochMinute(120);
     });
 
-    // Linger button should read "Closed — come back at 09:00" and be
-    // disabled. The data-enabled attribute reflects the verb's enabled
-    // flag for direct assertion.
+    // Linger button should read "Closed — come back at 10:00" and be
+    // disabled. The 10:00 (not 09:00) is per the POI's actual next-open
+    // time — the previous hardcoded "09:00" was the owner-found bug
+    // that this PR fixed. Castle's reopen IS 09:00 by coincidence;
+    // mercado's is 10:00. data-enabled reflects the verb's enabled flag.
     const linger = page.getByTestId("poi-drawer-linger-button");
     await expect(linger).toBeVisible();
     await expect(linger).toHaveText(/closed/i);
-    await expect(linger).toHaveText(/09:00/);
+    await expect(linger).toHaveText(/10:00/);
     await expect(linger).toBeDisabled();
     await expect(linger).toHaveAttribute("data-enabled", "false");
   });
