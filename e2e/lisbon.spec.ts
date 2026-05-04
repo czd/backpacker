@@ -902,36 +902,23 @@ test.describe("/lisbon", () => {
   test("linger button at day phase advances the clock by the verb's quantum", async ({
     page,
   }) => {
-    // Force the avatar to the market POI (so isAtPoi=true). Travel to
-    // the market commits via the Travel-here button; afterwards
-    // currentPoiSlug === "mercado-da-ribeira" and the linger button is
-    // now visible. Travel is ~19s under the post-`27bde8a` formula.
+    // **M2 PR7 update:** the market verb now routes to the azulejo
+    // mini-game (no clock advance — the mini-game is "taken-out-of-
+    // time" per the locked phase-agnostic 2026-05-04 decision). This
+    // test still wants to verify the *clock-advancing* linger flow,
+    // so we use the miradouro POI ("Take it in" / 30 game-min) which
+    // is the closest non-cost, non-route equivalent.
     test.setTimeout(60000);
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
     ).toHaveCount(5);
 
-    // Force the clock to a known day-phase value so we can compute
-    // expected post-linger time exactly. Set via Zustand setState —
-    // the test imports the store via the same global window the app
-    // uses (we don't expose it on window, so we use page.evaluate to
-    // dispatch the setState through a side-channel: the Zustand store
-    // is the same module instance the React tree imports; we surface
-    // it by calling its setState via a temporarily-installed
-    // window-exposure pattern only at test-time).
-    //
-    // The cleaner path: use the browser-side fetch to import the
-    // store module directly. Vite/Next dev exposes ESM URLs but not
-    // for our own modules without a re-export. We instead use the
-    // fact that `useGameClockStore.setState(...)` runs in React
-    // Strict-mode + jsdom in unit tests; in e2e, we use a different
-    // approach: travel to the market (which advances the clock by ~10
-    // game-minutes via the rAF loop) and then linger; the *delta from
-    // pre-linger to post-linger* is what we're really testing here.
     const avatar = page.getByTestId("avatar-marker");
-    const market = page.getByTestId("poi-marker-mercado-da-ribeira");
-    await market.click();
+    const miradouro = page.getByTestId(
+      "poi-marker-miradouro-de-santa-catarina",
+    );
+    await miradouro.click();
     await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
     await page.getByTestId("poi-drawer-travel-button").click();
     // Wait for travel to settle.
@@ -954,11 +941,11 @@ test.describe("/lisbon", () => {
     const beforeMatch = /(\d\d):(\d\d) · day (\d)/.exec(before ?? "");
     expect(beforeMatch).not.toBeNull();
 
-    // The linger button is now visible (avatar is at the market) and
-    // reads "Browse the stalls" (market verb at day phase). Click it.
+    // The linger button is now visible (avatar is at the miradouro)
+    // and reads "Take it in" (view verb at day phase). Click it.
     const linger = page.getByTestId("poi-drawer-linger-button");
     await expect(linger).toBeVisible();
-    await expect(linger).toHaveText(/browse the stalls/i);
+    await expect(linger).toHaveText(/take it in/i);
     await expect(linger).toBeEnabled();
     await expect(linger).toHaveAttribute("data-quantum", "30");
 
