@@ -12,11 +12,15 @@ Authoritative ledger for any external reference material the project uses — im
 
 Reference photographs of Portuguese azulejo panels. All Unsplash-licensed (free to use commercially with attribution preserved). Living at `docs/images/pr7-azulejo/`; `docs/images/pr7-azulejo/sources.md` mirrors this entry.
 
-| File | Author | Source |
-|---|---|---|
-| `annie-spratt-BAj9EOZiDaE-unsplash.jpg` | [Annie Spratt](https://unsplash.com/@anniespratt) | [Unsplash — white and blue floral tiles](https://unsplash.com/photos/white-and-blue-floral-tiles-BAj9EOZiDaE) |
-| `laura-xBh5uWGu0U4-unsplash.jpg` | [Laura](https://unsplash.com/@lauraemma_d) | [Unsplash — close-up blue and white tile pattern](https://unsplash.com/photos/a-close-up-of-a-blue-and-white-tile-pattern-xBh5uWGu0U4) |
-| `laura-adai-wvOmFlAvJTM-unsplash.jpg` | [laura adai](https://unsplash.com/@lauraadaiphoto) | [Unsplash — blue and white tile with pattern](https://unsplash.com/photos/a-blue-and-white-tile-with-a-pattern-on-it-wvOmFlAvJTM) |
+| File | Author | Source | Panel |
+|---|---|---|---|
+| `annie-spratt-BAj9EOZiDaE-unsplash.jpg` | [Annie Spratt](https://unsplash.com/@anniespratt) | [Unsplash — white and blue floral tiles](https://unsplash.com/photos/white-and-blue-floral-tiles-BAj9EOZiDaE) | Panel 1 (blue-white) |
+| `laura-xBh5uWGu0U4-unsplash.jpg` | [Laura](https://unsplash.com/@lauraemma_d) | [Unsplash — close-up blue and white tile pattern](https://unsplash.com/photos/a-close-up-of-a-blue-and-white-tile-pattern-xBh5uWGu0U4) | Panel 1 (blue-white) |
+| `laura-adai-wvOmFlAvJTM-unsplash.jpg` | [laura adai](https://unsplash.com/@lauraadaiphoto) | [Unsplash — blue and white tile with pattern](https://unsplash.com/photos/a-blue-and-white-tile-with-a-pattern-on-it-wvOmFlAvJTM) | Panel 1 (blue-white) |
+| `ashkan-forouzani-oVrkcrvAO3s-unsplash.jpg` | [Ashkan Forouzani](https://unsplash.com/@ashkfor121) | [Unsplash — white blue and brown textile](https://unsplash.com/photos/white-blue-and-brown-textile-oVrkcrvAO3s) | Panel 2 (polychrome) |
+| `kelly-sikkema-hLjGn1h9f2k-unsplash.jpg` | [Kelly Sikkema](https://unsplash.com/@kellysikkema) | [Unsplash — white blue and brown textile](https://unsplash.com/photos/white-blue-and-brown-textile-hLjGn1h9f2k) | Panel 2 (polychrome) |
+| `mathias-reding-IZJGb5J6aV4-unsplash.jpg` | [Mathias Reding](https://unsplash.com/@matreding) | [Unsplash — decorative tile design](https://unsplash.com/photos/a-close-up-of-a-decorative-tile-design-IZJGb5J6aV4) | Panel 2 (polychrome) |
+| `edwin-chen-rrUyezfFCaU-unsplash.jpg` | [Edwin Chen](https://unsplash.com/@star7a) | [Unsplash — brown blue and white abstract painting](https://unsplash.com/photos/brown-blue-and-white-abstract-painting-rrUyezfFCaU) | Panel 2 (polychrome) |
 
 License: [Unsplash License](https://unsplash.com/license) — free for commercial and non-commercial use, attribution preserved as a courtesy.
 
