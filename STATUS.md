@@ -71,7 +71,17 @@ Per AGENTS.md §9.3, must land before the named PR merges:
 - ADR-010 (structured POI availability schema) — Accepted.
 - M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
 
-### Next: dispatch PR4
+### Next: dispatch PR5
+
+PR4 landed (commit `26cb9bb`):
+- `LingerVerb` type extended with optional `cost` (cents). Hostel branch sets `cost: 1800` (€18 per ADR-007); other verbs leave it absent.
+- `<PoiDrawer>` subscribes to wallet via `usePlayerStore((s) => s.walletEurosCentsInternal)`, gates affordability via `canAfford`, renders `Sleep until morning · €18` when affordable / `Need €18 — try busking?` (disabled) when broke. New `data-cost` and `data-affordable` e2e attrs.
+- `handleLinger` for cost-bearing verbs: `chargeWallet(verb.cost)` up-front (gated by canAfford), then rAF advance, then `restoreRested()` at completion for hostel POIs (`selectedPoi.type === "hostel"`).
+- Awake-time rested drain wired into BOTH rAF loops (travel + linger): every minute committed → `drainRested(1/1440)`. Reduced-motion travel path also drains the equivalent total. Walking 76 game-min from airport drains ~5%.
+- Metro/taxi (PR8) will bypass the rAF loop and skip drain by construction — rest-neutral for free.
+- New `e2e/m2-hostel.spec.ts` with 5 tests covering baseline state, sleep-charges-and-restores, broke-state soft-refusal, airport-walk-drains-5%.
+- Vitest 264 → 274; size-limit ~zero-delta on both routes (~64% / 48% of ceilings).
+- **Anthropologist sanity-check on €18 dorm-bed pricing** still queued as non-blocking — owner can dispatch separately if they want a price revision after Anthropologist input.
 
 PR3 landed (commit `2795cca`) + post-PR3 fix (`cb34894`):
 - `convex/schema.ts` extended with optional `availability` field on `pois` per ADR-010 exact shape (days + ranges + optional seasonal).
