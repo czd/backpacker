@@ -4,6 +4,33 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-04 — `research/` pattern + `CREDITS.md` established; PR7 still queued
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`. PR1–PR6 shipped; PR7 (azulejo mini-game) discovery captured; awaiting owner sign-off on master name.
+
+### Done this session
+- **`research/` directory pattern** established. New canonical doc: `research/README.md` defines the structure (`research/<city>/<topic>/` with verbatim agent reports + synthesis README + bibliography). The discipline: **always** capture full academic-agent dispatches verbatim; never summarize away detail. Agents (and future-you) read from here when picking up cross-milestone work.
+- **M2 PR7 azulejo discovery captured** under `research/lisbon/azulejo-mini-game/`:
+  - `README.md` — synthesis with all locked decisions (two-panel ship, workshop framing Option 4, pickup line, success stamp), plus the open question on master name
+  - `anthropologist-2026-05-03.md` — verbatim Anthropologist report (panel patterns, workshop framing, language register, apprentice frame, cross-cutting flags)
+  - `historian-2026-05-03.md` — verbatim Historian report (era boundaries, Bernardes-school anchors, Reabilitação Urbana hook, Banco do Azulejo institution, period detail for UI Designer, Pombaline/Estado-Novo/colonial flags)
+  - `bibliography.md` — consolidated Portuguese-language scholarship + Az Infinitum / MatrizNet / MNAz reference URLs
+- **Retroactive `research/lisbon/poi-content-m1/README.md`** — captures the M1 PR1 academic findings as a synthesis pointer (verbatim reports were not preserved at dispatch time; this gap is what the new discipline corrects).
+- **`CREDITS.md`** at repo root — authoritative credit ledger. M2 PR7 azulejo image references (Annie Spratt, Laura, laura adai — all Unsplash-licensed) are logged. Sections for fonts, libraries, audio added as placeholders for future fills. Mirrors `docs/images/pr7-azulejo/sources.md`.
+- **`AGENTS.md` §12.7 + §12.8** — research-capture discipline and credits-ledger discipline added as working agreements. §12.6 "supporting documents" extended.
+- **`CLAUDE.md`** doc set updated to surface `research/` and `CREDITS.md` so future sessions discover them at session start.
+
+### Next: dispatch PR7
+
+Unchanged from previous entry. Waiting on owner sign-off for the master's name from the PR7 synthesis: **Mestra Fernanda Bastos** (recommended — woman, 60s, anchors against default-male-master assumption, *Bastos* is a recognizable Lisboa-region surname); alternatives **Mestre Joaquim Pinto** or **Mestre Joaquim Salgueiro**. Once chosen, dispatch UI Designer for panel imagery, then Frontend Developer for the mini-game mechanic.
+
+### Blocked on owner
+- Master-name pick (PR7).
+- `bunx convex run seed:seedLisbon` to migrate Convex rows with PR3's `availability` field (still queued from earlier session).
+
+---
+
 ## 2026-05-03 — M2 brainstorm complete; ADRs 007–010 Accepted
 
 ### Active milestone

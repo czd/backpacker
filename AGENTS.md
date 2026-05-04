@@ -374,10 +374,28 @@ A PR can be rejected with the comment "not mobile-native" if it:
 - Doesn't work in standalone PWA mode.
 
 ### 12.6 Supporting documents
-This brief sits alongside three other docs at the repo root:
+This brief sits alongside several other docs at the repo root:
 - `DECISIONS.md` — Architecture Decision Records (ADRs). One ADR per significant choice; format in §12.1.
 - `STATUS.md` — current state. What's done, what's next, what's blocked. Rolling, replaced each session per §14.10.
 - `BUILD-LOG.md` — milestone narrative and agent-review highlights. Newest-first; accreting. The "what made the project richer that we want to remember" file. Add an entry when closing out a milestone or significant chunk.
+- `research/` — persistent capture of academic-agent research and other long-form discovery. See §12.7.
+- `CREDITS.md` — authoritative credit ledger for external material (image references, fonts, scholarship, libraries). See §12.8.
+
+### 12.7 Research capture (academic agents)
+Anthropologist, Historian, and Geographer dispatches produce knowledge that's expensive to recreate and easy to lose: agent results sit in conversation history that gets compressed; commit messages summarize; STATUS.md rolls forward each session. **Research captured in `research/` does not roll over — it accretes.**
+
+**The discipline:**
+- **Always**, when an academic agent (Anthropologist, Historian, Geographer) completes a discovery dispatch — capture the **full report verbatim** at `research/<city>/<topic>/<agent>-<YYYY-MM-DD>.md` with YAML frontmatter (`agent`, `date`, `topic`, `milestone`, `related-adrs`). Don't summarize away detail.
+- **In parallel**, write or update the topic's synthesis README at `research/<city>/<topic>/README.md` distilling the decisions surfaced for the owner.
+- **Bibliography** per topic — collect citations into `bibliography.md` rather than scattering across reports.
+- **Cross-cutting topics** (e.g., colonial-legacy ADR per §15) get a top-level folder `research/<topic>/` when the topic spans cities.
+- **Before re-dispatching** an academic agent on a topic with an existing folder, pass the path in the prompt so the new agent doesn't re-derive what's already known.
+- **Don't edit** agent reports after capture — corrections go in the topic README's synthesis. The historical record stays intact.
+
+`research/README.md` is the canonical pattern doc. Read it at the start of any session that touches a city or cross-cutting concern with an existing research folder.
+
+### 12.8 Credits ledger
+Every external resource that ships in or visibly informs the project is credited in `CREDITS.md` — image references, fonts, datasets, scholarship, libraries, audio. Add to `CREDITS.md` in the same commit that adds the asset; missing credits are bugs. Per-topic image attributions also live alongside the assets at `docs/images/<topic>/sources.md` for proximity, but `CREDITS.md` is the authoritative root index. The §9.3 cultural-authenticity discipline depends on this ledger being honest.
 
 ---
 
