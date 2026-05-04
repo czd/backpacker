@@ -31,6 +31,8 @@ import { PoiMarker } from "./poi-marker";
 import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 import { RecenterButton } from "./recenter-button";
 import { TimeOfDayClock } from "./time-of-day-clock";
+import { TiredChip } from "./tired-chip";
+import { WalletChip } from "./wallet-chip";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -1521,6 +1523,34 @@ export function LisbonMap() {
        * the cozy slot-reel/Fraunces treatment.
        */}
       <TimeOfDayClock />
+
+      {/*
+       * Wallet chip (M2 PR5). Top-left chip-row sibling of the clock,
+       * offset right past the clock pill. Subscribes to
+       * `usePlayerStore.walletEurosCentsInternal` and renders whole
+       * Euros (rounds down per ADR-007). Same `bg-card` cozy chip
+       * family as the clock — same shadow, ring, height — so the two
+       * pills read as paired chrome. Always visible; the wallet exists
+       * regardless of in-game state.
+       */}
+      <WalletChip />
+
+      {/*
+       * Tired chip (M2 PR5, ADR-008). Renders only when
+       * `restedBand(rested) === "tired"` — i.e. continuous rested
+       * dropped below 0.33. Fades in/out at the band boundary. Tap
+       * fires an inline toast with the placeholder copy "You should
+       * sleep soon" (Narrative Designer polishes wording in M3).
+       * Adds chrome only when needed; vanishes when the player sleeps
+       * and rested resets.
+       *
+       * Sits on a *second row* below the clock+wallet pair (the 390px
+       * iPhone budget is too tight for three chips side-by-side once
+       * the recenter button claims the right edge). Tired chip falls
+       * out of the chrome above when relevant, reads as cozy chip-row
+       * stack rather than competing for inches.
+       */}
+      <TiredChip />
 
       {/*
        * Recenter button (§7.1 "tap 'recenter' to return"). Top-right,
