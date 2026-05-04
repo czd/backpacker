@@ -32,6 +32,7 @@ import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 import { RecenterButton } from "./recenter-button";
 import { TimeOfDayClock } from "./time-of-day-clock";
 import { TiredChip } from "./tired-chip";
+import { startTimedAdvance } from "./timed-advance";
 import { WalletChip } from "./wallet-chip";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
@@ -513,88 +514,54 @@ export function LisbonMap() {
   }, [traveling]);
 
   /**
-   * In-game time advance during fast-travel. Per the M1 PR5 brief:
-   * 3 game-minutes per real-second, gated on `document.hidden` so
-   * backgrounding the tab pauses the world (when the player returns,
-   * the world waited; we do NOT "catch up" elapsed real-time).
+   * In-game time advance during fast-travel. Per the M1 PR5 brief +
+   * ADR-007's tuning: 4 game-minutes per real-second, gated on
+   * `document.hidden` so backgrounding the tab pauses the world (when
+   * the player returns, the world waited; we do NOT "catch up"
+   * elapsed real-time).
    *
    * **Reduced-motion path:** instead of running the rAF loop, we
    * jump-cut the advance — `handleTravelTo` computes the leg's total
    * duration upfront and calls `advance(total)` once at the start.
    * The rAF loop is the smooth-time path; the jump-cut is the
-   * reduced-motion equivalent.
+   * reduced-motion equivalent. The helper is bypassed entirely on
+   * the reduced-motion path because reduced-motion is the caller's
+   * decision — see `timed-advance.ts` header comment.
    *
-   * **Unmount safety:** the effect's cleanup cancels the pending rAF
-   * handle. If the component unmounts mid-travel, no orphaned frame
-   * keeps trying to advance the (gone) store.
+   * **Helper indirection:** the rAF + accumulator + `document.hidden`
+   * pattern is owned by `startTimedAdvance` (M2 PR6, per ADR-005's
+   * Consequences amendment). The store mutations stay here so a
+   * future caller (metro/taxi in PR8 — rest-neutral; mini-game in
+   * PR7 — different drain shape) can wire its own mutation set
+   * without forking the helper.
+   *
+   * **Unmount safety:** the effect's cleanup calls `handle.cancel()`.
+   * If the component unmounts mid-travel, no orphaned frame keeps
+   * trying to advance the (gone) store.
    */
   useEffect(() => {
-    let rafId: number | null = null;
-    let lastFrameTime: number | null = null;
-    // Local fractional accumulator. Per-frame deltas at 60fps are
-    // ~0.05 game-min; the store rounds advance() to integer minutes
-    // per ADR-005, so per-frame commits would round to 0 and nothing
-    // would advance. We accumulate locally and commit only when a
-    // whole game-minute has elapsed. The remainder carries over.
-    let accumulatedMins = 0;
+    if (reducedMotion) return; // jump-cut path lives in fastTravelTo
+    if (!traveling) return;
 
-    const tick = (now: number) => {
-      // Stop if we left traveling state, or if the tab is hidden.
-      // `document.hidden` is checked per-frame so backgrounding mid-
-      // travel pauses the loop without needing a separate listener
-      // (the loop simply stops re-scheduling itself when hidden).
-      if (!travelingRef.current) {
-        rafId = null;
-        lastFrameTime = null;
-        accumulatedMins = 0;
-        return;
-      }
-      if (typeof document !== "undefined" && document.hidden) {
-        // Reset lastFrameTime so the next visible frame doesn't apply
-        // a giant delta from the hidden window. This is the "world
-        // waited" semantic the brief asks for. The accumulator is
-        // preserved — fractional progress before backgrounding is not
-        // lost.
-        lastFrameTime = null;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      if (lastFrameTime === null) {
-        lastFrameTime = now;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      const deltaSec = (now - lastFrameTime) / 1000;
-      lastFrameTime = now;
-      const deltaMins = deltaSec * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
-      accumulatedMins += deltaMins;
-      // Commit whole minutes; carry the remainder. Over a 19s airport
-      // leg at 3 game-min/sec we commit ~57 minutes one at a time,
-      // each minute about 333ms apart in real time. The visible
-      // ticking on the clock chip is the cumulative result of these
-      // single-minute commits.
-      if (accumulatedMins >= 1) {
-        const wholeMins = Math.floor(accumulatedMins);
-        accumulatedMins -= wholeMins;
-        useGameClockStore.getState().advance(wholeMins);
+    const handle = startTimedAdvance({
+      rate: GAME_MINS_PER_REAL_SEC_DURING_TRAVEL,
+      onMinuteCommitted: (mins) => {
+        useGameClockStore.getState().advance(mins);
         // **M2 PR4 (per ADR-008):** awake-time rested drain at 1/1440
         // per game-minute. Walking the 76-game-min airport→central
         // leg drains ~5%; short Baixa hops drain ~0.5–1%. Metro and
         // taxi (PR8) bypass this loop entirely with a one-shot
-        // advance, so they stay rest-neutral by construction —
-        // PR8 won't have to disable the drain.
-        usePlayerStore.getState().drainRested(wholeMins / 1440);
-      }
-      rafId = requestAnimationFrame(tick);
-    };
+        // synchronous advance, so they stay rest-neutral by
+        // construction — PR8 won't have to disable the drain.
+        usePlayerStore.getState().drainRested(mins / 1440);
+      },
+      // External continuation predicate — read the ref each frame so
+      // a `setTraveling(false)` from `fastTravelTo`'s arrival branch
+      // stops the loop without needing a re-mount of this effect.
+      shouldContinue: () => travelingRef.current,
+    });
 
-    if (traveling && !reducedMotion) {
-      rafId = requestAnimationFrame(tick);
-    }
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
+    return () => handle.cancel();
     // `reducedMotion` is read at effect-mount time (not via ref) — when
     // the player flips the OS preference mid-session it triggers a
     // useReducedMotion re-render, and this effect re-runs with the new
@@ -1090,24 +1057,38 @@ export function LisbonMap() {
 
     setLingering(true);
 
-    let rafId: number | null = null;
-    let lastFrameTime: number | null = null;
-    let accumulatedMins = 0;
-    let committedMins = 0;
-
-    const tick = (now: number) => {
-      // Cancellation: if the drawer closes mid-linger or the page is
-      // closed, the lingering state is reset to false and we bail.
-      // The committed minutes stay (no rollback); the remainder is
-      // dropped. Per the brief's edge-case handling: the wallet
-      // charge stays (already committed), the rested-restore does
-      // NOT fire (we don't reach the completion branch).
-      if (!lingeringRef.current) {
-        rafId = null;
-        return;
-      }
-      if (committedMins >= quantum) {
-        rafId = null;
+    // The rAF + accumulator + `document.hidden` gate is owned by
+    // `startTimedAdvance` (M2 PR6, per ADR-005's Consequences
+    // amendment). Store mutations stay here: the linger path drains
+    // rested per-minute (PR4); the hostel-sleep completion restore
+    // overwrites that drain (per ADR-008). Future linger consumers
+    // (museum/tasca without restore; mini-game in PR7 with a flat
+    // session drain; busking in PR8 with its own drain shape) wire
+    // different mutation sets here without forking the helper.
+    //
+    // **No cancellation handle is stashed.** The user can't currently
+    // cancel a linger mid-advance — the drawer is at peek and the
+    // only interactive surface during the loop is the recenter
+    // button, which doesn't cancel. If a future M3 PR introduces
+    // cancellation (e.g., closing the drawer mid-sleep), stash the
+    // handle in a ref and call `cancel()` there. For PR6's
+    // pure-refactor scope, completion is the only exit path and
+    // `onComplete` carries the post-loop work the pre-extraction
+    // code did inside the cap branch.
+    startTimedAdvance({
+      rate,
+      onMinuteCommitted: (mins) => {
+        useGameClockStore.getState().advance(mins);
+        // **M2 PR4 (per ADR-008):** awake-time rested drain at
+        // 1/1440 per game-minute, mirroring the travel rAF loop.
+        // For hostel sleep the per-minute drain is invisible — the
+        // `restoreRested()` call at completion overwrites it. For
+        // future cost-bearing lingers without a restore (a museum
+        // entry, a meal at a tasca), the drain accumulates honestly.
+        usePlayerStore.getState().drainRested(mins / 1440);
+      },
+      totalMinutes: quantum,
+      onComplete: () => {
         setLingering(false);
         // **Hostel sleep completion (M2 PR4, per ADR-008):** restore
         // rested to 1.0 on natural completion. The per-minute drain
@@ -1120,42 +1101,8 @@ export function LisbonMap() {
         if (isHostelSleep) {
           usePlayerStore.getState().restoreRested();
         }
-        return;
-      }
-      if (typeof document !== "undefined" && document.hidden) {
-        // Background pause — same semantic as the travel rAF loop.
-        // The world waits; we don't catch up real-time elapsed.
-        lastFrameTime = null;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      if (lastFrameTime === null) {
-        lastFrameTime = now;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      const deltaSec = (now - lastFrameTime) / 1000;
-      lastFrameTime = now;
-      accumulatedMins += deltaSec * rate;
-      if (accumulatedMins >= 1) {
-        let wholeMins = Math.floor(accumulatedMins);
-        const remaining = quantum - committedMins;
-        if (wholeMins > remaining) wholeMins = remaining;
-        accumulatedMins -= wholeMins;
-        committedMins += wholeMins;
-        useGameClockStore.getState().advance(wholeMins);
-        // **M2 PR4 (per ADR-008):** awake-time rested drain at
-        // 1/1440 per game-minute, mirroring the travel rAF loop.
-        // For hostel sleep the per-minute drain is invisible — the
-        // `restoreRested()` call at completion overwrites it. For
-        // future cost-bearing lingers without a restore (a museum
-        // entry, a meal at a tasca), the drain accumulates honestly.
-        usePlayerStore.getState().drainRested(wholeMins / 1440);
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
+      },
+    });
   }, [selectedPoi, epochMinute, reducedMotion]);
 
   /**
