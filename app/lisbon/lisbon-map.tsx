@@ -1405,7 +1405,22 @@ export function LisbonMap() {
             // react-map-gl to the underlying maplibre Marker element
             // and creates a deterministic stacking context above the
             // POI markers (default zIndex: auto).
-            style={{ zIndex: 10 }}
+            //
+            // pointerEvents: "none" so taps pass THROUGH the avatar
+            // wrapper to whatever sits underneath (the POI marker when
+            // the avatar is at a POI; the map otherwise). The inner
+            // <AvatarMarker> already has `pointer-events-none`, but
+            // react-map-gl's <Marker> wrapper renders a
+            // `.maplibregl-marker` div with default pointer-events
+            // behavior — without this, the wrapper intercepts taps and
+            // the POI marker the avatar sits on top of becomes
+            // unclickable. The avatar is non-interactive by design
+            // (recentering happens via <RecenterButton>, not by
+            // tapping the avatar), so passing through is the right
+            // semantic. Real-phone testing surfaced this after the
+            // z-index lift made the wrapper into an effective click-
+            // shield for the POI underneath.
+            style={{ zIndex: 10, pointerEvents: "none" }}
           >
             <AvatarMarker traveling={traveling} facing={facing} />
           </Marker>
