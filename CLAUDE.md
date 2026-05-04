@@ -6,6 +6,8 @@
 - `DECISIONS.md` — Architecture Decision Records (ADRs). Why we chose what we chose.
 - `STATUS.md` — current state. What's done, what's next, what's blocked. Rolling, replaced each session.
 - `BUILD-LOG.md` — milestone narrative + agent-review highlights. Newest-first. The "what made the project richer that we want to remember" file.
+- `MILESTONES.md` — milestone DoDs M0–M5 (extracted from `AGENTS.md` §13). Consult when starting a milestone or verifying acceptance criteria.
+- `GLOSSARY.md` — glossary (`AGENTS.md` §17) and inspiration/reading list (`AGENTS.md` §16). Pure reference; consult on demand.
 - `research/` — persistent capture of academic-agent research (Anthropologist, Historian, Geographer) and other long-form discovery that informs design. Verbatim reports under `research/<city>/<topic>/<agent>-<YYYY-MM-DD>.md`; per-topic synthesis in each topic's `README.md`. **Read `research/README.md` first.** Always read here before re-dispatching academics on a topic that already has a folder; always capture here when an academic agent finishes a discovery dispatch.
 - `CREDITS.md` — authoritative credit ledger for external material (image references, fonts, scholarship, libraries). Add to it in the same commit that adds the asset.
 
