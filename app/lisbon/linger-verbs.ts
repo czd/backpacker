@@ -45,7 +45,30 @@ export type LingerVerb = {
    * nights are for).
    */
   enabled: boolean;
+  /**
+   * Cost in cents (integer ≥ 0). Optional — POIs that don't charge
+   * money for their linger verb omit this. The drawer reads it to
+   * (a) render the cost in the button label and (b) gate
+   * affordability against the player's wallet via the soft-refusal
+   * pattern from ADR-007.
+   *
+   * M2 ship: only the hostel sets `cost` (€18 = 1800 cents). Mini-game
+   * (PR7) and busking (PR8) PAY rather than charge — they use
+   * `creditWallet` at completion, not the cost field. Future POIs
+   * with linger costs (a museum entry fee, a meal at a tasca) would
+   * use this same field.
+   */
+  cost?: number;
 };
+
+/**
+ * Hostel night cost per ADR-007: €18 (1800 cents). Charged up front
+ * by `handleLinger` when the player taps "Sleep until morning"; sleep
+ * also restores rested to 1.0 on completion (per ADR-008's clean-reset
+ * semantic). Constant exported so tests / future PRs can reference the
+ * canonical value without re-typing the magic number.
+ */
+export const HOSTEL_NIGHT_COST_CENTS = 1800;
 
 /**
  * The "closed at night" copy. Reads as a soft refusal — the city has a
@@ -74,11 +97,20 @@ export function lingerVerbFor(
   // advances to the next 06:00, regardless of phase or availability.
   // The quantum is dynamic via `minutesUntilMorning`. Sleep is what
   // nights are for; that's a per-type rule, not an availability one.
+  //
+  // **M2 PR4 (per ADR-007):** the hostel's verb gets a `cost` of
+  // €18 (1800 cents). The drawer renders the cost in the button label
+  // ("Sleep until morning · €18") and gates affordability via
+  // `canAfford` against the wallet. The soft-refusal pattern fires
+  // when the player can't afford ("Need €18 — try busking?"). Other
+  // POI types leave `cost` absent — they don't charge money for
+  // their linger verb at M2.
   if (poi.type === "hostel") {
     return {
       label: "Sleep until morning",
       quantum: minutesUntilMorning(epochMinute),
       enabled: true,
+      cost: HOSTEL_NIGHT_COST_CENTS,
     };
   }
 

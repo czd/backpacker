@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 
+import { canAfford, usePlayerStore, wholeEuros } from "./player-store";
 import type { PoiMarkerType } from "./poi-marker";
 
 /**
@@ -198,8 +199,20 @@ export type PoiDrawerProps = {
    * verb is `enabled: false` (night closure), the button still renders
    * but is disabled, with the verb's `label` (e.g. "Closed — come back
    * at 09:00").
+   *
+   * **M2 PR4 (per ADR-007):** the verb's optional `cost` (cents) drives
+   * two things: (a) the button label includes the cost when affordable
+   * (e.g. "Sleep until morning · €18"); (b) when the wallet can't
+   * cover the cost, the button is disabled and the label flips to the
+   * soft-refusal "Need €18 — try busking?" form. PR8 wires the
+   * deep-link to the busking POI; PR4 just renders the disabled state.
    */
-  lingerVerb?: { label: string; quantum: number; enabled: boolean };
+  lingerVerb?: {
+    label: string;
+    quantum: number;
+    enabled: boolean;
+    cost?: number;
+  };
   /**
    * Tap handler for the linger button. Fires only when `isAtPoi` is true
    * AND `lingerVerb.enabled` is true. The parent advances the game clock
@@ -642,12 +655,62 @@ function PoiDrawerBody({
   poi: Poi;
   isAtPoi: boolean;
   onTravel?: () => void;
-  lingerVerb?: { label: string; quantum: number; enabled: boolean };
+  lingerVerb?: {
+    label: string;
+    quantum: number;
+    enabled: boolean;
+    cost?: number;
+  };
   onLinger?: () => void;
   lingering?: boolean;
 }) {
   const meta = TYPE_PILL_META[poi.type];
   const TypeIcon = meta.icon;
+
+  // Wallet subscription (M2 PR4). The drawer reads the wallet to gate
+  // the affordability of cost-bearing linger verbs (the hostel's "Sleep
+  // until morning" at €18 in M2). Subscribing here keeps the drawer's
+  // affordability check in sync with `chargeWallet` / `creditWallet`
+  // mutations from anywhere in the app — when the player buskes a few
+  // €1 sessions back to a positive balance (PR8 future), the hostel
+  // button flips from disabled to enabled without any explicit prop
+  // change. Compute every render; cheap, no memoization.
+  //
+  // **HUD pattern note (PR5 hand-off):** the same `usePlayerStore`
+  // selector pattern works for the HUD's wallet pill — subscribe to
+  // `walletEurosCentsInternal`, render `wholeEuros(cents)` for the
+  // visible Euro number. PR5's HUD slice can mirror this hook line
+  // verbatim.
+  const walletCents = usePlayerStore((s) => s.walletEurosCentsInternal);
+
+  // Affordability + label resolution for cost-bearing linger verbs.
+  // `lingerVerbCost` may be `undefined` (no cost), `0` (treated the
+  // same as undefined for label-rendering — the hostel always has
+  // a positive cost), or a positive integer cents value. We treat
+  // any cost > 0 as "render the cost in the label and check
+  // affordability"; cost === 0 || cost === undefined preserves the
+  // pre-PR4 behavior (verb's plain label).
+  const lingerCost = lingerVerb?.cost ?? 0;
+  const lingerHasCost = lingerCost > 0;
+  const lingerCanAfford = lingerHasCost
+    ? canAfford(walletCents, lingerCost)
+    : true;
+
+  // Compose the visible button label:
+  //  - cost > 0 + canAfford  → "Sleep until morning · €18"
+  //  - cost > 0 + !canAfford → "Need €18 — try busking?" (soft refusal)
+  //  - cost === 0 / absent   → verb.label verbatim (M1 PR5 behavior)
+  //
+  // The soft-refusal copy is from ADR-007 verbatim. PR8 wires the
+  // deep-link from the disabled button to the Largo do Carmo busking
+  // POI; PR4 just renders the disabled state with the right copy.
+  const lingerButtonLabel = lingerVerb
+    ? lingerHasCost
+      ? lingerCanAfford
+        ? `${lingerVerb.label} · €${wholeEuros(lingerCost)}`
+        : `Need €${wholeEuros(lingerCost)} — try busking?`
+      : lingerVerb.label
+    : "";
 
   // The body is a flex column. DrawerContent is `h-auto max-h-[95svh]`
   // so the box's natural height = sum of content rows. For typical POI
@@ -851,16 +914,33 @@ function PoiDrawerBody({
           size="lg"
           variant="outline"
           // Disabled when the verb is closed (night for non-24h types),
+          // when the cost is unaffordable (M2 PR4 soft-refusal pattern),
           // when no handler is wired, OR while a linger advance is in
           // flight — re-tap during the in-flight advance would queue
           // another and quietly double the time spent.
-          disabled={!lingerVerb.enabled || !onLinger || lingering}
-          onClick={lingerVerb.enabled && !lingering ? onLinger : undefined}
+          disabled={
+            !lingerVerb.enabled ||
+            !lingerCanAfford ||
+            !onLinger ||
+            lingering
+          }
+          onClick={
+            lingerVerb.enabled && lingerCanAfford && !lingering
+              ? onLinger
+              : undefined
+          }
           className="mt-2 w-full"
           data-testid="poi-drawer-linger-button"
           data-enabled={lingerVerb.enabled}
           data-quantum={lingerVerb.quantum}
           data-lingering={lingering ? "true" : "false"}
+          // M2 PR4 stable e2e attrs: the cost in cents (or 0 when
+          // absent) and an explicit affordability boolean. Tests
+          // assert against these so the visible label can evolve
+          // (Narrative Designer wording polish in M3) without
+          // breaking the affordability gate's coverage.
+          data-cost={lingerCost}
+          data-affordable={lingerCanAfford ? "true" : "false"}
         >
           {/* Loader2 spinner during linger advance — visible feedback that
               time is passing. The clock chip is also ticking minute-by-
@@ -873,7 +953,7 @@ function PoiDrawerBody({
               aria-hidden="true"
             />
           ) : null}
-          {lingerVerb.label}
+          {lingerButtonLabel}
         </Button>
       ) : null}
     </div>

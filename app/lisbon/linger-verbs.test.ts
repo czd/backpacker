@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Doc } from "../../convex/_generated/dataModel";
-import { lingerVerbFor } from "./linger-verbs";
+import { HOSTEL_NIGHT_COST_CENTS, lingerVerbFor } from "./linger-verbs";
 
 // Phase reminders (per ADR-006 / game-clock-store):
 //   dawn   05:00–07:00   (300–419)
@@ -52,6 +52,9 @@ describe("lingerVerbFor — hostel always returns Sleep", () => {
     expect(verb.enabled).toBe(true);
     // 14:30 → 06:00 next day = 930 minutes.
     expect(verb.quantum).toBe(930);
+    // M2 PR4 (per ADR-007): hostel verb carries a €18 cost.
+    expect(verb.cost).toBe(1800);
+    expect(verb.cost).toBe(HOSTEL_NIGHT_COST_CENTS);
   });
 
   it("hostel at 22:00 → Sleep until morning (480 min), enabled regardless of phase", () => {
@@ -260,5 +263,60 @@ describe("lingerVerbFor — Largo do Carmo busking POI (M2 PR8 hand-off)", () =>
     const poi = mockPoi({ type: "view", availability: largoAvailability });
     const verb = lingerVerbFor(poi, 1320);
     expect(verb.enabled).toBe(false);
+  });
+});
+
+describe("lingerVerbFor — cost field (M2 PR4 per ADR-007)", () => {
+  it("hostel verb carries cost: 1800 (€18) regardless of phase", () => {
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    expect(lingerVerbFor(poi, DAY_BASELINE).cost).toBe(1800);
+    expect(lingerVerbFor(poi, NIGHT_2200).cost).toBe(1800);
+    expect(lingerVerbFor(poi, NIGHT_0200).cost).toBe(1800);
+    expect(lingerVerbFor(poi, DAWN_0530).cost).toBe(1800);
+    expect(lingerVerbFor(poi, DUSK_1830).cost).toBe(1800);
+  });
+
+  it("non-hostel verbs leave cost undefined (no charge for linger)", () => {
+    // M2 ship: only the hostel charges. Mini-game (PR7) and busking
+    // (PR8) PAY rather than charge — they use creditWallet at
+    // completion, not the cost field. Future POIs with linger costs
+    // (museum entry, tasca meal) would set cost; today none do.
+    const transit = mockPoi({ type: "transit", availability: undefined });
+    expect(lingerVerbFor(transit, DAY_NOON).cost).toBeUndefined();
+
+    const view = mockPoi({ type: "view", availability: undefined });
+    expect(lingerVerbFor(view, DAY_NOON).cost).toBeUndefined();
+
+    const sight = mockPoi({
+      type: "sight",
+      availability: { ranges: [{ open: 540, close: 1260 }] },
+    });
+    expect(lingerVerbFor(sight, DAY_NOON).cost).toBeUndefined();
+
+    const market = mockPoi({
+      type: "market",
+      availability: { ranges: [{ open: 600, close: 1440 }] },
+    });
+    expect(lingerVerbFor(market, DAY_NOON).cost).toBeUndefined();
+  });
+
+  it("hostel cost stays attached even when verb is disabled-by-quantum-ish edge", () => {
+    // Hostel is always enabled, so no current branch returns it as
+    // disabled. The contract is "cost is the price the player pays
+    // when they tap an enabled hostel verb"; if a future ADR adds a
+    // disabled-hostel branch (e.g. "no rooms available tonight"),
+    // this test will surface that the cost still semantically applies.
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const verb = lingerVerbFor(poi, NIGHT_2200);
+    expect(verb.enabled).toBe(true);
+    expect(verb.cost).toBe(HOSTEL_NIGHT_COST_CENTS);
+  });
+
+  it("HOSTEL_NIGHT_COST_CENTS exports the canonical 1800 (€18) value", () => {
+    // Per ADR-007 sign-off: €18 is the placeholder for Pensão Estrela
+    // do Tejo. Anthropologist sanity-check on the price is queued
+    // separately; if revised post-PR4, this constant + the test
+    // above are the one-line tweak.
+    expect(HOSTEL_NIGHT_COST_CENTS).toBe(1800);
   });
 });

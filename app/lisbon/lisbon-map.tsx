@@ -16,7 +16,7 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { AvatarMarker } from "./avatar-marker";
 import { phaseOf, useGameClockStore, type Phase } from "./game-clock-store";
-import { usePlayerStore } from "./player-store";
+import { canAfford, usePlayerStore } from "./player-store";
 import {
   bearingDeg,
   boundsForFit,
@@ -575,6 +575,13 @@ export function LisbonMap() {
         const wholeMins = Math.floor(accumulatedMins);
         accumulatedMins -= wholeMins;
         useGameClockStore.getState().advance(wholeMins);
+        // **M2 PR4 (per ADR-008):** awake-time rested drain at 1/1440
+        // per game-minute. Walking the 76-game-min airport→central
+        // leg drains ~5%; short Baixa hops drain ~0.5–1%. Metro and
+        // taxi (PR8) bypass this loop entirely with a one-shot
+        // advance, so they stay rest-neutral by construction —
+        // PR8 won't have to disable the drain.
+        usePlayerStore.getState().drainRested(wholeMins / 1440);
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -788,6 +795,14 @@ export function LisbonMap() {
         const totalGameMins =
           (durationMs / 1000) * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
         useGameClockStore.getState().advance(totalGameMins);
+        // **M2 PR4 (per ADR-008):** mirror the awake-time rested
+        // drain for the reduced-motion jump-cut. Walking burns rested
+        // even under prefers-reduced-motion — the player isn't asking
+        // for the rested-mechanic to be reduced, only the visual
+        // motion. Same drain rate as the rAF path (1/1440 per
+        // game-min). Round on the store side via `drainRested`;
+        // the store accepts fractional drains directly per ADR-007.
+        usePlayerStore.getState().drainRested(totalGameMins / 1440);
 
         setTraveling(true);
         setAvatar(destination);
@@ -1006,10 +1021,61 @@ export function LisbonMap() {
     if (!verb.enabled || verb.quantum <= 0) return;
     if (lingeringRef.current) return; // re-entrancy guard
 
+    // **M2 PR4 (per ADR-007):** affordability gate for cost-bearing
+    // linger verbs (the hostel's "Sleep until morning" at €18 in M2).
+    // The drawer's button is already disabled when unaffordable, but
+    // we re-check here as a defense-in-depth: a programmatic invoke
+    // (a future settings shortcut, an a11y power-tool, an e2e test
+    // with a stale render) shouldn't be able to trigger
+    // `chargeWallet` and have it throw. The store's `chargeWallet`
+    // mutator throws on insufficient funds (per ADR-007's boundary
+    // defense); double-gating means we never hit that throw under
+    // normal flows.
+    const verbCost = verb.cost ?? 0;
+    if (verbCost > 0) {
+      const walletCents =
+        usePlayerStore.getState().walletEurosCentsInternal;
+      if (!canAfford(walletCents, verbCost)) return;
+      // Charge UP FRONT, synchronously. PR2's hand-off note for PR4
+      // prescribes this exact sequence: charge → advance → restore.
+      // The player's wallet drops the moment they tap the button;
+      // they read the cost, they tap, the money's gone. Edge case:
+      // if the rAF loop is interrupted mid-advance (page unmount,
+      // navigation), the charge stays but the rested-restore
+      // doesn't fire. Per the brief: cozy framing — "you chose to
+      // sleep and walked away from your phone; no refund."
+      usePlayerStore.getState().chargeWallet(verbCost);
+    }
+
+    // **Hostel sleep restore (M2 PR4, per ADR-008):** capture the
+    // "is this hostel?" check at dispatch time, not in the loop's
+    // closure — the selectedPoi could in principle change while the
+    // loop runs (it doesn't today, the drawer guards against it,
+    // but capturing the flag here makes the future-proofing free).
+    // The restore fires at the natural end of the loop's commit
+    // path, AFTER the final `advance`. Net effect with the per-
+    // minute drain: rested = 1.0 at end (the per-minute drain is
+    // overwritten by the clean reset). ADR-008's "sleep is a clean
+    // reset" semantic.
+    const isHostelSleep = selectedPoi.type === "hostel";
+
     // Reduced-motion: jump-cut the advance, no rAF loop, no visible
     // ticking. The player has explicitly opted out of motion.
     if (reducedMotion) {
       useGameClockStore.getState().advance(verb.quantum);
+      // **M2 PR4 (per ADR-008):** mirror the awake-time rested drain
+      // for the reduced-motion jump-cut path. The hostel's sleep
+      // restore overwrites this immediately below; the drain is
+      // observable for non-cost lingers only (transit/view/sight/
+      // market — none of which set cost in M2 but their rested
+      // drain still applies).
+      usePlayerStore.getState().drainRested(verb.quantum / 1440);
+      if (isHostelSleep) {
+        // Sleep is a clean reset to 1.0 regardless of partial-sleep
+        // duration (per ADR-008). The drain we just applied is
+        // overwritten by this restore.
+        usePlayerStore.getState().restoreRested();
+      }
       return;
     }
 
@@ -1031,7 +1097,9 @@ export function LisbonMap() {
       // Cancellation: if the drawer closes mid-linger or the page is
       // closed, the lingering state is reset to false and we bail.
       // The committed minutes stay (no rollback); the remainder is
-      // dropped.
+      // dropped. Per the brief's edge-case handling: the wallet
+      // charge stays (already committed), the rested-restore does
+      // NOT fire (we don't reach the completion branch).
       if (!lingeringRef.current) {
         rafId = null;
         return;
@@ -1039,6 +1107,17 @@ export function LisbonMap() {
       if (committedMins >= quantum) {
         rafId = null;
         setLingering(false);
+        // **Hostel sleep completion (M2 PR4, per ADR-008):** restore
+        // rested to 1.0 on natural completion. The per-minute drain
+        // applied during the loop is overwritten — net effect is
+        // rested = 1.0 at end of sleep, regardless of how long the
+        // sleep was. Other linger types (mini-game in PR7 at 0.05
+        // flat; busking in PR8 at 0.02 flat) handle their own
+        // session-completion drains in those PRs; PR4 only does the
+        // hostel restore.
+        if (isHostelSleep) {
+          usePlayerStore.getState().restoreRested();
+        }
         return;
       }
       if (typeof document !== "undefined" && document.hidden) {
@@ -1063,6 +1142,13 @@ export function LisbonMap() {
         accumulatedMins -= wholeMins;
         committedMins += wholeMins;
         useGameClockStore.getState().advance(wholeMins);
+        // **M2 PR4 (per ADR-008):** awake-time rested drain at
+        // 1/1440 per game-minute, mirroring the travel rAF loop.
+        // For hostel sleep the per-minute drain is invisible — the
+        // `restoreRested()` call at completion overwrites it. For
+        // future cost-bearing lingers without a restore (a museum
+        // entry, a meal at a tasca), the drain accumulates honestly.
+        usePlayerStore.getState().drainRested(wholeMins / 1440);
       }
       rafId = requestAnimationFrame(tick);
     };

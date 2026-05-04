@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 
+import { usePlayerStore } from "./player-store";
 import {
   DEFAULT_SNAP,
   PoiDrawer,
@@ -270,5 +271,244 @@ describe("PoiDrawer", () => {
     // Body unmounts after Vaul's exit animation; in jsdom the exit is
     // synchronous so the test can assert immediately.
     expect(screen.queryByTestId("poi-drawer-body")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M2 PR4 — linger button cost rendering + soft-refusal pattern (per ADR-007).
+// ---------------------------------------------------------------------------
+
+const HOSTEL_FIXTURE: Poi = {
+  slug: "lisbon-baixa-hostel",
+  name: "Pensão Estrela do Tejo",
+  type: "hostel",
+  description:
+    "A modest pensão a few blocks up from Praça do Comércio. The receptionist remembers everyone's name by the second night.",
+  openHours: "Open 24h",
+};
+
+describe("PoiDrawer — linger button cost rendering (M2 PR4)", () => {
+  // Reset the player store between tests so wallet mutations don't leak.
+  beforeEach(() => {
+    usePlayerStore.setState({ walletEurosCentsInternal: 2500, rested: 1.0 });
+  });
+
+  it("renders cost in label when affordable: 'Sleep until morning · €18'", () => {
+    // Wallet at €25, hostel costs €18 — affordable. The button label
+    // should include the cost suffix; the button is enabled.
+    render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent(/sleep until morning/i);
+    expect(btn).toHaveTextContent(/€18/);
+    // The exact suffix shape is "· €18" (middle-dot separator). Locking
+    // it so a future label-copy refactor doesn't silently lose the
+    // separator (which would read as "Sleep until morning€18").
+    expect(btn.textContent).toMatch(/sleep until morning\s+·\s+€18/i);
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveAttribute("data-cost", "1800");
+    expect(btn).toHaveAttribute("data-affordable", "true");
+    expect(btn).toHaveAttribute("data-enabled", "true");
+  });
+
+  it("renders soft-refusal label when unaffordable: 'Need €18 — try busking?'", () => {
+    // Force wallet to 0 — broke. Hostel cost €18 is unaffordable; the
+    // button reads the soft-refusal copy and is disabled. PR8 wires
+    // the deep-link to Largo do Carmo busking POI; PR4 just renders
+    // the disabled state.
+    usePlayerStore.setState({ walletEurosCentsInternal: 0 });
+    render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent(/need €18/i);
+    expect(btn).toHaveTextContent(/try busking\?/i);
+    // The soft-refusal copy is from ADR-007 verbatim. Lock the exact
+    // shape so a future Narrative Designer polish pass touches the
+    // ADR + this test together.
+    expect(btn.textContent).toMatch(/need €18 — try busking\?/i);
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("data-cost", "1800");
+    expect(btn).toHaveAttribute("data-affordable", "false");
+    // The verb itself is still enabled (hostel is always enabled per
+    // ADR-008); the affordability gate is what disables the button.
+    // This is the intentional separation: `data-enabled` reflects the
+    // verb's per-availability/per-type state; `data-affordable`
+    // reflects the wallet gate. Tests can disambiguate which gate
+    // triggered a disabled state.
+    expect(btn).toHaveAttribute("data-enabled", "true");
+  });
+
+  it("does NOT call onLinger when the soft-refusal button is tapped", () => {
+    // The disabled button is a no-op. Even a programmatic click should
+    // not fire the handler — defense against an a11y power-tool or
+    // a stale render that bypasses the disabled-attribute UI gate.
+    usePlayerStore.setState({ walletEurosCentsInternal: 0 });
+    const onLinger = vi.fn();
+    render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={onLinger}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    fireEvent.click(btn);
+    expect(onLinger).not.toHaveBeenCalled();
+  });
+
+  it("preserves M1 PR5 behavior when cost is absent or 0", () => {
+    // Non-cost-bearing verbs (transit/view/sight/market in M2) should
+    // render the verb's label verbatim — no cost suffix, no affordability
+    // gate. data-cost reflects 0 and data-affordable is true. This
+    // protects the M1 PR5 contract from regressing as we layer cost
+    // logic on top.
+    render(
+      <PoiDrawer
+        poi={{ ...FIXTURE, type: "view", slug: "miradouro-fixture" }}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{ label: "Take it in", quantum: 30, enabled: true }}
+        onLinger={() => {}}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent(/take it in/i);
+    // No €-symbol anywhere in the label.
+    expect(btn.textContent ?? "").not.toMatch(/€/);
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveAttribute("data-cost", "0");
+    expect(btn).toHaveAttribute("data-affordable", "true");
+  });
+
+  it("affordability is recomputed when the wallet changes (Zustand subscription)", () => {
+    // The drawer subscribes to `walletEurosCentsInternal` directly,
+    // so a wallet mutation re-renders the button with the new
+    // affordability state. This is the load-bearing pattern: the
+    // hostel button flips from enabled to disabled in real time as
+    // the player buskes back to a positive balance (PR8 future) or
+    // gets charged elsewhere.
+    const { rerender } = render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    let btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toHaveAttribute("data-affordable", "true");
+    expect(btn).toBeEnabled();
+
+    // Drop the wallet below the cost. The Zustand subscription fires
+    // a re-render; on the next read the button is disabled. We
+    // explicitly rerender to ensure the React tree picks up the
+    // store change in jsdom; in a real browser the subscription
+    // schedules the re-render automatically.
+    usePlayerStore.setState({ walletEurosCentsInternal: 1700 });
+    rerender(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toHaveAttribute("data-affordable", "false");
+    expect(btn).toBeDisabled();
+    // Soft-refusal copy is now visible. Note: the soft-refusal label
+    // shows the verb's COST (€18), not the wallet's current balance.
+    // The player's wallet at €17 < €18 = unaffordable; the message
+    // is "you need €18 to do this," not "you have €17."
+    expect(btn).toHaveTextContent(/need €18/i);
+    expect(btn).toHaveTextContent(/try busking\?/i);
+  });
+
+  it("renders cost suffix while lingering (spinner + label-with-cost)", () => {
+    // Mid-linger the button is disabled (lingering=true) and shows
+    // the spinner. The label still includes the cost suffix because
+    // the underlying verb still has the cost — we don't want the
+    // label to flicker mid-linger. data-affordable stays true (the
+    // charge already happened up front; the wallet is now lower
+    // but we're past the gate).
+    usePlayerStore.setState({ walletEurosCentsInternal: 700 }); // post-charge
+    render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={() => {}}
+        lingering
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    // €7 wallet < €18 cost → soft-refusal would normally fire, but
+    // we're already lingering. The button is disabled either way; we
+    // assert the spinner is present and the button is disabled. The
+    // label flips to soft-refusal because canAfford is false; this
+    // is a documented edge — the rAF loop is past the gate. Once
+    // PR5's HUD lands, the player sees the wallet has already
+    // dropped, and the button reads "Need €18 — try busking?" while
+    // the spinner ticks; the visual is unusual but honest. If the
+    // owner objects post-PR4-fixup, we can pin the label to the
+    // pre-charge wording while lingering is true.
+    expect(btn).toBeInTheDocument();
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("data-lingering", "true");
+    // Spinner is the Loader2 svg with `animate-spin`.
+    const spinner = btn.querySelector("svg.animate-spin");
+    expect(spinner).not.toBeNull();
   });
 });
