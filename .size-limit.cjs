@@ -114,21 +114,23 @@ module.exports = [
     gzip: true,
   },
 
+  // ─── ADR-004: DOM-only mini-game — target 320 KB, ceiling 350 KB ──────
+  // M2 PR7 azulejo lands. Tentative ceiling 350 KB per the STATUS.md
+  // recommendation: between splash 300 and world layer 400 (mini-game
+  // route loads less than full map but more than splash).
+  {
+    name: '/lisbon/jobs/* (mini-game, DOM-only)',
+    path: [
+      ...SHARED,
+      '.next/static/chunks/app/lisbon/jobs/**/page-*.js',
+    ],
+    limit: '350 KB',
+    gzip: true,
+  },
+
   // ─── PLACEHOLDERS for future routes ────────────────────────────────────
   // Uncomment each entry when the corresponding route lands. Adjust the
   // page glob to match the actual route segment(s).
-
-  // // ADR-004: DOM-only mini-game — target 320 KB, ceiling 360 KB.
-  // // Slot for the M2 azulejo job at `/lisbon/jobs/azulejo` (M2 PR7+).
-  // {
-  //   name: '/lisbon/jobs/* (mini-game, DOM-only)',
-  //   path: [
-  //     ...SHARED,
-  //     '.next/static/chunks/app/lisbon/jobs/**/page-*.js',
-  //   ],
-  //   limit: '360 KB',
-  //   gzip: true,
-  // },
 
   // // ADR-004: Journal — target 300 KB, ceiling 330 KB.
   // // Slot for the M4 journal layer at `/journal/*`.

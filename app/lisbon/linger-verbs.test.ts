@@ -200,12 +200,18 @@ describe("lingerVerbFor — market (Mercado da Ribeira)", () => {
     ranges: [{ open: 600, close: 1440 }], // 10:00–24:00
   };
 
-  it("market at noon → 'Browse the stalls'", () => {
+  // M2 PR7: market verb hands off to the azulejo mini-game route
+  // ('Restore an azulejo panel'). The verb carries `payout: 1500`
+  // (€15 reward) and `route: '/lisbon/jobs/azulejo'`. Quantum is 0
+  // because the mini-game owns its own time.
+  it("market at noon → 'Restore an azulejo panel' with €15 payout + route", () => {
     const poi = mockPoi({ type: "market", availability: mercadoAvailability });
     const verb = lingerVerbFor(poi, DAY_NOON);
-    expect(verb.label).toBe("Browse the stalls");
-    expect(verb.quantum).toBe(30);
+    expect(verb.label).toBe("Restore an azulejo panel");
+    expect(verb.quantum).toBe(0);
     expect(verb.enabled).toBe(true);
+    expect(verb.payout).toBe(1500);
+    expect(verb.route).toBe("/lisbon/jobs/azulejo");
   });
 
   it("market at 02:00 → closed (m=120, before the 10:00 open)", () => {
@@ -214,13 +220,17 @@ describe("lingerVerbFor — market (Mercado da Ribeira)", () => {
     expect(verb.enabled).toBe(false);
     expect(verb.label).toMatch(/closed/i);
     expect(verb.quantum).toBe(0);
+    // Closed verbs don't carry payout (no reward when can't access).
+    expect(verb.payout).toBeUndefined();
+    expect(verb.route).toBeUndefined();
   });
 
-  it("market at 22:00 → still open (within 10:00–24:00)", () => {
+  it("market at 22:00 → still open ('Restore an azulejo panel')", () => {
     const poi = mockPoi({ type: "market", availability: mercadoAvailability });
     const verb = lingerVerbFor(poi, NIGHT_2200);
     expect(verb.enabled).toBe(true);
-    expect(verb.label).toBe("Browse the stalls");
+    expect(verb.label).toBe("Restore an azulejo panel");
+    expect(verb.payout).toBe(1500);
   });
 
   it("market at 09:00 → closed (one minute before open)", () => {

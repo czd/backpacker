@@ -59,6 +59,44 @@ export type LingerVerb = {
    * use this same field.
    */
   cost?: number;
+  /**
+   * Optional payout in cents (integer ≥ 0). Set on verbs whose
+   * action *pays* the player rather than charges them — the drawer
+   * renders the payout in the label as " · €N" (same suffix shape
+   * as `cost`, just framed as income rather than expense).
+   *
+   * M2 PR7: Mercado da Ribeira's "Restore an azulejo panel" verb
+   * sets `payout: 1500` (€15). The verb routes the player to
+   * `/lisbon/jobs/azulejo` rather than running a linger advance —
+   * see the `route` field below.
+   */
+  payout?: number;
+  /**
+   * Optional route. When set, tapping the verb navigates to this
+   * client-side route instead of running the linger rAF loop. Used
+   * for verbs that hand off to a full-screen mini-game route per
+   * AGENTS.md §6.3 ("mini-games: full-screen takeover").
+   *
+   * M2 PR7: the Mercado da Ribeira's "Restore an azulejo panel" verb
+   * sets `route: "/lisbon/jobs/azulejo"`. The drawer's onLinger
+   * handler reads this and dispatches a router.push instead of an
+   * advance.
+   */
+  route?: string;
+  /**
+   * Optional verb override label for the resume case. M2 PR7: when
+   * the player has an in-progress azulejo session (saved via
+   * `useAzulejoStore.inProgress`), the verb label flips from
+   * "Restore an azulejo panel · €15" to "Continue your panel" — and
+   * the payout suffix is dropped because the panel is already in
+   * flight.
+   *
+   * The drawer doesn't know about the azulejo store; this field is
+   * a placeholder seam for the consumer (lisbon-map.tsx) that
+   * subscribes to the store and overrides `label` + clears `payout`
+   * accordingly. Keeps `lingerVerbFor` a pure function of the POI
+   * + game-clock state.
+   */
 };
 
 /**
@@ -158,7 +196,8 @@ export function lingerVerbFor(
   //   transit  15min — quick "watch the planes" beat
   //   view     30min — sit at a miradouro for half an hour
   //   sight    60min — explore a landmark properly
-  //   market   30min — browse without overcommitting
+  //   market   azulejo mini-game (per M2 PR7) — full-screen route
+  //            takeover, no linger advance
   switch (poi.type) {
     case "transit":
       return { label: "Watch the planes", quantum: 15, enabled: true };
@@ -167,7 +206,25 @@ export function lingerVerbFor(
     case "sight":
       return { label: "Walk the walls", quantum: 60, enabled: true };
     case "market":
-      return { label: "Browse the stalls", quantum: 30, enabled: true };
+      // **M2 PR7 (per ADR-007 + ADR-009):** Mercado da Ribeira is the
+      // azulejo panel pickup point (the master's atelier is off-screen
+      // until M3+). The verb routes to the full-screen mini-game route
+      // rather than running a linger rAF loop. The €15 payout reads
+      // as the verb's reward; the mini-game itself credits the wallet
+      // via `creditWallet(1500)` on completion (per ADR-009).
+      //
+      // The "Continue your panel" override (when in-progress state
+      // exists) is applied by the consumer (lisbon-map.tsx) via the
+      // azulejo store subscription — keeps `lingerVerbFor` pure.
+      return {
+        label: "Restore an azulejo panel",
+        // Quantum is meaningless for a route-based verb (the mini-
+        // game route owns time). 0 keeps the contract clean.
+        quantum: 0,
+        enabled: true,
+        payout: 1500,
+        route: "/lisbon/jobs/azulejo",
+      };
     default: {
       // Exhaustiveness check. If a future PR adds a sixth POI type the
       // TS compiler will flag this branch as unreachable-now-reachable.

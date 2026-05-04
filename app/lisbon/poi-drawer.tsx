@@ -212,6 +212,13 @@ export type PoiDrawerProps = {
     quantum: number;
     enabled: boolean;
     cost?: number;
+    /** M2 PR7: when set, label renders with " · €N" payout suffix
+     * (when affordable / always for routes). Mini-game verbs PAY
+     * rather than charge. */
+    payout?: number;
+    /** M2 PR7: when set, tapping the verb navigates to this route
+     * instead of running the linger rAF loop. */
+    route?: string;
   };
   /**
    * Tap handler for the linger button. Fires only when `isAtPoi` is true
@@ -660,6 +667,13 @@ function PoiDrawerBody({
     quantum: number;
     enabled: boolean;
     cost?: number;
+    /** M2 PR7: when set, label renders with " · €N" payout suffix
+     * (when affordable / always for routes). Mini-game verbs PAY
+     * rather than charge. */
+    payout?: number;
+    /** M2 PR7: when set, tapping the verb navigates to this route
+     * instead of running the linger rAF loop. */
+    route?: string;
   };
   onLinger?: () => void;
   lingering?: boolean;
@@ -696,9 +710,21 @@ function PoiDrawerBody({
     ? canAfford(walletCents, lingerCost)
     : true;
 
+  // Payout suffix (M2 PR7). The mini-game verb's `payout` is the €
+  // amount the action *pays* the player on completion — rendered as
+  // " · €15" suffix to telegraph the reward. Unlike `cost`, payout
+  // doesn't gate affordability (the verb pays you, it doesn't cost
+  // you). When both are set, cost takes precedence (the cost-bearing
+  // shape is the soft-refusal seam from ADR-007); in M2 only one
+  // verb sets payout (mini-game) and only one sets cost (hostel),
+  // so the precedence ordering is theoretical.
+  const lingerPayout = lingerVerb?.payout ?? 0;
+  const lingerHasPayout = lingerPayout > 0;
+
   // Compose the visible button label:
   //  - cost > 0 + canAfford  → "Sleep until morning · €18"
   //  - cost > 0 + !canAfford → "Need €18 — try busking?" (soft refusal)
+  //  - payout > 0            → "Restore an azulejo panel · €15" (PR7)
   //  - cost === 0 / absent   → verb.label verbatim (M1 PR5 behavior)
   //
   // The soft-refusal copy is from ADR-007 verbatim. PR8 wires the
@@ -709,7 +735,9 @@ function PoiDrawerBody({
       ? lingerCanAfford
         ? `${lingerVerb.label} · €${wholeEuros(lingerCost)}`
         : `Need €${wholeEuros(lingerCost)} — try busking?`
-      : lingerVerb.label
+      : lingerHasPayout
+        ? `${lingerVerb.label} · €${wholeEuros(lingerPayout)}`
+        : lingerVerb.label
     : "";
 
   // The body is a flex column. DrawerContent is `h-auto max-h-[95svh]`

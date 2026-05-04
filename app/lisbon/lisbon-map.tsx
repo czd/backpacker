@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { animate, useReducedMotion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
   Layer,
   Map,
@@ -26,7 +27,34 @@ import {
   travelDurationMs,
   type LngLat,
 } from "./geo";
-import { lingerVerbFor } from "./linger-verbs";
+import { useAzulejoStore } from "./jobs/azulejo/azulejo-store";
+import { lingerVerbFor, type LingerVerb } from "./linger-verbs";
+
+/**
+ * M2 PR7: when the selected POI is the Mercado da Ribeira and the
+ * player has an in-progress azulejo session, override the linger
+ * verb's label to "Continue your panel" and drop the payout suffix
+ * (the payout lands on completion, not on resume — the player is
+ * walking back to a panel they already started).
+ *
+ * Pure function. Tests cover both branches via the linger-verbs
+ * suite + a dedicated mini-game integration vitest.
+ */
+function overrideForAzulejoInProgress(
+  verb: LingerVerb,
+  poi: { type: string; slug: string },
+  hasInProgress: boolean,
+): LingerVerb {
+  if (!hasInProgress) return verb;
+  if (poi.type !== "market") return verb;
+  if (poi.slug !== "mercado-da-ribeira") return verb;
+  return {
+    ...verb,
+    label: "Continue your panel",
+    // Drop the payout suffix on resume — the panel's already in flight.
+    payout: undefined,
+  };
+}
 import { PoiMarker } from "./poi-marker";
 import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 import { RecenterButton } from "./recenter-button";
@@ -315,6 +343,12 @@ export function LisbonMap() {
   // run; otherwise the 5 Lisbon POIs from M1 PR1. M1 PR3 (this slice) wires
   // the result into <Marker> children below and into the sr-only list view.
   const pois = useQuery(api.pois.getPoisByCity, { city: "lisbon" });
+  const router = useRouter();
+  // M2 PR7: subscribe to the azulejo persistence store so the
+  // Mercado da Ribeira drawer's verb flips to "Continue your panel"
+  // when an in-progress session exists. Cheap selector — re-reads
+  // only when the in-progress state transitions in/out of `null`.
+  const azulejoInProgress = useAzulejoStore((s) => s.inProgress);
 
   if (pois !== undefined && pois.length === 0) {
     // Seed missing — owner needs to run `bunx convex run seed:seedLisbon`.
@@ -987,8 +1021,27 @@ export function LisbonMap() {
   const handleLinger = useCallback(() => {
     if (!selectedPoi) return;
     const verb = lingerVerbFor(selectedPoi, epochMinute);
-    if (!verb.enabled || verb.quantum <= 0) return;
+    if (!verb.enabled) return;
     if (lingeringRef.current) return; // re-entrancy guard
+
+    // **M2 PR7 (per ADR-009):** route-based verb. The verb hands off
+    // to a full-screen mini-game route (azulejo at the Mercado da
+    // Ribeira) rather than running a linger advance. The mini-game
+    // owns its own time + state; this handler is a pure dispatcher.
+    //
+    // Per AGENTS.md §6.3 ("mini-games: full-screen takeover"): the
+    // route navigation is the takeover. The drawer remains in the
+    // background-history state while the player works the panel; the
+    // mini-game's leave button (or completion) routes back to /lisbon
+    // and the drawer reopens at the Mercado da Ribeira marker via
+    // the existing selectedPoi state.
+    if (verb.route) {
+      router.push(verb.route);
+      return;
+    }
+
+    // Non-route verbs require a positive quantum (advance amount).
+    if (verb.quantum <= 0) return;
 
     // **M2 PR4 (per ADR-007):** affordability gate for cost-bearing
     // linger verbs (the hostel's "Sleep until morning" at €18 in M2).
@@ -1578,9 +1631,20 @@ export function LisbonMap() {
         // current game-clock value. Per ADR-005 the verb is a pure
         // derivation, recomputed every render — cheap, no memoization
         // needed for 5 POIs and a handful of branches.
+        //
+        // M2 PR7: when the selected POI is the Mercado da Ribeira AND
+        // the player has an in-progress azulejo session, the verb
+        // label flips to "Continue your panel" and the payout suffix
+        // is dropped (the panel is already in flight; payout lands on
+        // completion). Keeps `lingerVerbFor` a pure function — the
+        // override is a per-render adjustment at the consumer site.
         lingerVerb={
           selectedPoi
-            ? lingerVerbFor(selectedPoi, epochMinute)
+            ? overrideForAzulejoInProgress(
+                lingerVerbFor(selectedPoi, epochMinute),
+                selectedPoi,
+                azulejoInProgress !== null,
+              )
             : undefined
         }
         onLinger={handleLinger}
