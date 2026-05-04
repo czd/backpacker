@@ -1002,7 +1002,7 @@ export function LisbonMap() {
 
   const handleLinger = useCallback(() => {
     if (!selectedPoi) return;
-    const verb = lingerVerbFor(selectedPoi.type, epochMinute);
+    const verb = lingerVerbFor(selectedPoi, epochMinute);
     if (!verb.enabled || verb.quantum <= 0) return;
     if (lingeringRef.current) return; // re-entrancy guard
 
@@ -1502,7 +1502,7 @@ export function LisbonMap() {
         // needed for 5 POIs and a handful of branches.
         lingerVerb={
           selectedPoi
-            ? lingerVerbFor(selectedPoi.type, epochMinute)
+            ? lingerVerbFor(selectedPoi, epochMinute)
             : undefined
         }
         onLinger={handleLinger}

@@ -6,6 +6,7 @@ import {
   minuteOfDay,
   minuteOfHour,
   minutesUntilMorning,
+  monthOf,
   phaseOf,
   useGameClockStore,
 } from "./game-clock-store";
@@ -230,6 +231,65 @@ describe("minutesUntilMorning — sleep-until-morning quantum", () => {
   it("is invariant under day shifts (only minute-of-day matters)", () => {
     expect(minutesUntilMorning(1320)).toBe(minutesUntilMorning(1320 + 1440));
     expect(minutesUntilMorning(870)).toBe(minutesUntilMorning(870 + 5 * 1440));
+  });
+});
+
+describe("monthOf — derived month-of-year (per ADR-010)", () => {
+  // Per ADR-010's "acknowledged abstraction": one in-game year = 365
+  // days; month is derived as
+  // `Math.floor(((dayOf(em) - 1) % 365) / 30.4) + 1`.
+  // The 30.4 figure means month boundaries don't fall exactly on
+  // day-30 — reasonable but not pixel-precise. Tests assert the
+  // boundaries that matter for the castle's Nov–Feb seasonal hours
+  // (months 11, 12, 1, 2).
+
+  it("month 1 from day 1 (epochMinute 0)", () => {
+    expect(monthOf(0)).toBe(1);
+  });
+
+  it("month 1 from day 1 at 14:30 (the first-launch baseline)", () => {
+    // baseline 870 → dayOf = 1 → dayInYear = 0 → month 1.
+    expect(monthOf(870)).toBe(1);
+  });
+
+  it("month 1 from day 30 (mid-January)", () => {
+    // dayOf(29*1440) = 30 → dayInYear = 29 → floor(29/30.4) = 0 → month 1.
+    expect(monthOf(29 * 1440)).toBe(1);
+  });
+
+  it("month 2 from day 31 (the 30.4 boundary kicks in)", () => {
+    // dayOf(30*1440) = 31 → dayInYear = 30 → floor(30/30.4) = 0 → month 1.
+    // dayOf(31*1440) = 32 → dayInYear = 31 → floor(31/30.4) = 1 → month 2.
+    expect(monthOf(31 * 1440)).toBe(2);
+  });
+
+  it("month 6 (June, summer) around day 152", () => {
+    // dayOf(151*1440) = 152 → dayInYear = 151 → floor(151/30.4) = 4 → month 5.
+    // Approximate per ADR-010's 30.4 abstraction — day ~152 lands in May/June.
+    expect(monthOf(151 * 1440)).toBe(5);
+    // Day 167 → dayInYear=166 → floor(166/30.4)=5 → month 6.
+    expect(monthOf(166 * 1440)).toBe(6);
+  });
+
+  it("month 11 (November, seasonal) around day 305", () => {
+    // dayOf(304*1440) = 305 → dayInYear = 304 → floor(304/30.4) = 10 → month 11.
+    expect(monthOf(304 * 1440)).toBe(11);
+  });
+
+  it("month 12 (December, seasonal) around day 335", () => {
+    // dayOf(334*1440) = 335 → dayInYear = 334 → floor(334/30.4) = 10 → month 11
+    // dayOf(335*1440) = 336 → dayInYear = 335 → floor(335/30.4) = 11 → month 12.
+    expect(monthOf(335 * 1440)).toBe(12);
+  });
+
+  it("wraps year — day 366 returns to month 1", () => {
+    // dayOf(365*1440) = 366 → dayInYear = 365 % 365 = 0 → month 1.
+    expect(monthOf(365 * 1440)).toBe(1);
+  });
+
+  it("returns the same month across calendar-year wraps", () => {
+    expect(monthOf(870)).toBe(monthOf(870 + 365 * 1440));
+    expect(monthOf(166 * 1440)).toBe(monthOf(166 * 1440 + 365 * 1440));
   });
 });
 

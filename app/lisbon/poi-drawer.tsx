@@ -187,7 +187,7 @@ export type PoiDrawerProps = {
   onTravel?: () => void;
   /**
    * The linger verb for this POI given the current game-clock state.
-   * Computed by the parent via `lingerVerbFor(poi.type, epochMinute)` —
+   * Computed by the parent via `lingerVerbFor(poi, epochMinute)` —
    * the parent is the one with subscribe-access to the Zustand store, so
    * the drawer stays a pure presentational component (easy to test, easy
    * to render in isolation). When omitted, the linger slot is empty (this

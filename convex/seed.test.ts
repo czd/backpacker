@@ -96,3 +96,88 @@ describe("LISBON_POIS seed array", () => {
       .toBe(slugs.length);
   });
 });
+
+describe("LISBON_POIS availability — M2 PR3 (per ADR-010)", () => {
+  // The migration table from ADR-010 §"Migration of existing seeded POIs":
+  //   - hostel / transit / view → availability absent (24/7 default)
+  //   - castle  → seasonal Mar–Oct 09:00–21:00 / Nov–Feb 09:00–18:00
+  //   - mercado → 10:00–24:00 base (Thu–Sat extended hours deferred)
+
+  const bySlug = (slug: string) =>
+    LISBON_POIS.find((p) => p.slug === slug);
+
+  it("hostel has no availability (absent = 24/7 default)", () => {
+    const poi = bySlug("lisbon-baixa-hostel");
+    expect(poi).toBeDefined();
+    expect((poi as Record<string, unknown>).availability).toBeUndefined();
+  });
+
+  it("airport has no availability (24/7 transit hub)", () => {
+    const poi = bySlug("lisbon-aeroporto");
+    expect(poi).toBeDefined();
+    expect((poi as Record<string, unknown>).availability).toBeUndefined();
+  });
+
+  it("miradouro has no availability (public space)", () => {
+    const poi = bySlug("miradouro-de-santa-catarina");
+    expect(poi).toBeDefined();
+    expect((poi as Record<string, unknown>).availability).toBeUndefined();
+  });
+
+  it("castle has seasonal availability matching the prose", () => {
+    const poi = bySlug("castelo-de-sao-jorge");
+    expect(poi).toBeDefined();
+    const av = (poi as Record<string, unknown>).availability as
+      | {
+          ranges: { open: number; close: number }[];
+          seasonal?: {
+            startMonth: number;
+            endMonth: number;
+            ranges: { open: number; close: number }[];
+          };
+        }
+      | undefined;
+    expect(av).toBeDefined();
+    // Mar–Oct base: 09:00–21:00 = 540–1260
+    expect(av!.ranges).toEqual([{ open: 540, close: 1260 }]);
+    // Nov–Feb seasonal: 09:00–18:00 = 540–1080. Wraps year (11 > 2).
+    expect(av!.seasonal).toBeDefined();
+    expect(av!.seasonal!.startMonth).toBe(11);
+    expect(av!.seasonal!.endMonth).toBe(2);
+    expect(av!.seasonal!.ranges).toEqual([{ open: 540, close: 1080 }]);
+  });
+
+  it("mercado has base 10:00–24:00 (Thu–Sat extended hours deferred)", () => {
+    const poi = bySlug("mercado-da-ribeira");
+    expect(poi).toBeDefined();
+    const av = (poi as Record<string, unknown>).availability as
+      | { ranges: { open: number; close: number }[] }
+      | undefined;
+    expect(av).toBeDefined();
+    expect(av!.ranges).toEqual([{ open: 600, close: 1440 }]);
+  });
+
+  it("availability open/close values are integer minutes-of-day in [0, 1440]", () => {
+    for (const poi of LISBON_POIS) {
+      const av = (poi as Record<string, unknown>).availability as
+        | {
+            ranges: { open: number; close: number }[];
+            seasonal?: { ranges: { open: number; close: number }[] };
+          }
+        | undefined;
+      if (av === undefined) continue;
+      const allRanges = [
+        ...av.ranges,
+        ...(av.seasonal?.ranges ?? []),
+      ];
+      for (const { open, close } of allRanges) {
+        expect(Number.isInteger(open)).toBe(true);
+        expect(Number.isInteger(close)).toBe(true);
+        expect(open).toBeGreaterThanOrEqual(0);
+        expect(open).toBeLessThanOrEqual(1440);
+        expect(close).toBeGreaterThanOrEqual(0);
+        expect(close).toBeLessThanOrEqual(1440);
+      }
+    }
+  });
+});

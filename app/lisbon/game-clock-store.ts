@@ -123,6 +123,24 @@ export function phaseOf(em: number): Phase {
 }
 
 /**
+ * Month of year [1, 12] derived from `epochMinute`. Per ADR-010's
+ * "acknowledged abstraction": the in-game calendar is otherwise
+ * unstructured, so for the castle's seasonal-hours feature we adopt
+ * one in-game year = 365 days and derive the month as
+ * `Math.floor(((dayOf(em) - 1) % 365) / 30.4) + 1`. The 30.4 figure
+ * (≈ 365 / 12) means month boundaries don't fall exactly on day-30,
+ * which is the trade-off ADR-010 names — fine for the only M2
+ * consumer (Castelo de São Jorge's Mar–Oct vs Nov–Feb hours).
+ *
+ * If a richer calendar ever lands (real weekday/month modeling, NPC
+ * birthdays, festivals), supersede via ADR.
+ */
+export function monthOf(em: number): number {
+  const dayInYear = (dayOf(em) - 1) % 365;
+  return Math.floor(dayInYear / 30.4) + 1;
+}
+
+/**
  * Game-minutes from `em` until the next 06:00 (in-game morning).
  * Used by the hostel "Sleep until morning" verb — the linger button's
  * advance amount is computed dynamically from this so sleeping at 22:00
