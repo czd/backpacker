@@ -25,13 +25,11 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 **UI Designer pass complete (2026-05-04).** Verbatim spec at `research/lisbon/azulejo-mini-game/ui-designer-2026-05-04.md`; synthesis README updated; bibliography unchanged. The spec is FD's substrate — 16 locked OKLCH palette tokens, two locked tile motifs (*acanthus volute corner* + *ponta de diamante*), motion spec with Framer Motion spring constants + reduced-motion alternatives, screen architecture at 390×844 with 360×640 reflow, reusable-primitive boundaries (`<MiniGameShell />` flagged as the major future-pattern for Tokyo+), Whimsy seams (M5 deferred), test-surface attrs (data-testid + aria).
 
-**3 owner picks before FD dispatch:**
+**3 owner picks locked 2026-05-04:**
 
-1. **Soft-break prompt copy register: A or B?** (UI Designer recommends A.)
-   - A: *"You've been at this a while. Take a break — pick it up tomorrow if you want."* — warmer, parental-protective; carries Mestra's ~65yo register without being maternal-condescending
-   - B: *"Long enough for now. Want to leave it? The tiles will keep."* — terser, more master-register; closer to *Está bom assim*'s clipped voice but reads colder for a break-prompt where warmth IS the point
-2. **Pickup-note rotation direction** — UI Designer committed to **−3°** (left-tilt) with note on top-right of panel and leave button on top-left. Owner can flip to +3° (right-tilt) if note placement should swap to top-left. UI Designer's recommendation: keep the −3°/top-right composition.
-3. **Phase-tint workshop backdrop at M5 (Whimsy seam #6)** — opt in or stay phase-agnostic? UI Designer recommends **phase-agnostic** (mini-game is "taken-out-of-time" per §5.1; the master's atelier has its own quality of light). Defer the actual decision to GD at M5; flagged here only because owner may have an instinct.
+1. **Soft-break prompt copy: Option B** — *"Long enough for now. Want to leave it? The tiles will keep."* The owner overrode the UI Designer's Option A recommendation. The terser master-register reads *as Mestra Fernanda* — closer to *Está bom assim*'s clipped voice than the warmer "you've been at this a while" parental register. The aesthetic question — does the master coddle, or does she trust the apprentice with a clipped instruction — landed on the side of trust. M3 Narrative Designer polishes to Portuguese.
+2. **Pickup-note placement: keep** — −3° left-tilt, top-right of panel, leave button top-left.
+3. **Phase-tint backdrop: phase-agnostic** — atelier has its own light; mini-game is "taken-out-of-time" per §5.1. Whimsy seam #6 stays unimplemented at M5.
 
 **Cross-cutting flags surfaced by UI Designer:**
 

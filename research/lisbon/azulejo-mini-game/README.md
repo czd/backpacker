@@ -2,7 +2,7 @@
 topic: azulejo-mini-game
 city: lisbon
 milestone: M2 PR7
-status: UI Designer pass complete (2026-05-04); ready for FD pending 3 owner picks
+status: UI Designer pass complete (2026-05-04); 3 owner picks locked 2026-05-04; ready for FD pending polychrome reference sourcing decision
 date-opened: 2026-05-03
 related-adrs: [ADR-009 (mini-game failure semantics)]
 related-bullets-in-status: [PR7 cultural-content review hooks]
@@ -119,7 +119,9 @@ The headlines from that resolution:
 - **Workshop = implied, not illustrated.** Lime-washed-wall texture + soft warm vignette over the existing `--background` token. The wooden tile tray IS the *Banco do Azulejo* sorting tray.
 - **Pickup line + success stamp:** rendered in **Caveat** (the project's existing handwritten font, finally load-bearing). Pickup note as physical-pinned-paper at −3°. Success stamp as ink-pressed at +5° with spring-bounce motion.
 - **Leave button:** lucide `ArrowLeft` (NOT `X` — `X` lies about the no-penalty contract; per ADR-009 tiles persist for resume).
-- **Soft-break prompt** at 3 real min: Vaul Drawer at half-snap, framed as a handwritten note from the master, NOT a system dialog. **Owner picks copy register A vs B (see open questions below).**
+- **Soft-break prompt** at 3 real min: Vaul Drawer at half-snap, framed as a handwritten note from the master, NOT a system dialog. **Copy locked (owner pick 2026-05-04, Option B):** *"Long enough for now. Want to leave it? The tiles will keep."* — terser, master-register; Mestra Fernanda's clipped voice. M3 Narrative Designer polishes to Portuguese.
+- **Pickup-note placement locked (owner pick 2026-05-04):** −3° left-tilt, top-right of panel, leave button top-left. Keep as committed.
+- **Phase-tint backdrop locked (owner pick 2026-05-04):** **phase-agnostic.** The atelier has its own quality of light; mini-game is "taken-out-of-time" per §5.1. Whimsy seam #6 stays unimplemented at M5.
 - **Three-band rested rendering finally renders:** snap tolerance 12/10/8 px; hint pulse 600ms / 800ms / first-only — ADR-008 pattern lands as motion for the first time.
 - **Whimsy NOT invoked at PR7** (per the PR5 discipline). Six stable seams flagged for M5: tile-place sound, ink-fleck particle burst, ambient atelier loop, first-completion floating receipt, haptic on pickup, optional phase-tinted backdrop.
 - **`<MiniGameShell />` is the major architectural future-pattern.** PR7 ships the shell concretely inside `app/lisbon/jobs/azulejo/`; M5+ Tokyo dispatch lifts it out into `lib/mini-game/`. The shell carries leave button + handwritten note + soft-break drawer + success-stamp pattern.
