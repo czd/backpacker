@@ -107,10 +107,28 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
   // Resets `completedRef` for the new session — when Next's router
   // cache reuses the component instance across visits, the ref would
   // otherwise stay `true` from a prior completion and silently
-  // short-circuit the next completion's payout + nav. Reset on the
-  // same beat as `beginSession`.
+  // short-circuit the next completion's payout + nav.
+  //
+  // Defensive cleanup: if the persisted snapshot is *already* complete
+  // (legacy state from the pre-fix completion bug, or any future
+  // inconsistency where inProgress survived completion), clear it
+  // here. The next render sees inProgress=null and creates a fresh
+  // session — the player gets a new panel without re-triggering the
+  // completion payout/stamp.
   useEffect(() => {
-    if (inProgress) return;
+    if (inProgress) {
+      const def = PANEL_DEFINITIONS[inProgress.panelVariant];
+      if (isPanelComplete(inProgress.placements, def.missingSlots)) {
+        // Block the completion useEffect from firing this render —
+        // both effects see the same `inProgress` closure value, so
+        // setting completedRef here prevents a spurious payout +
+        // stamp on stale state. The next render sees inProgress=null
+        // and the fresh-session branch below resets the ref.
+        completedRef.current = true;
+        clearInProgress();
+      }
+      return;
+    }
     const variant = selectPanelVariant(hasCompletedFirstSession);
     const trayOrder = shuffleTrayOrder(TILE_IDS);
     const snapshot: AzulejoInProgress = {
@@ -121,7 +139,7 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
     };
     completedRef.current = false;
     beginSession(snapshot);
-  }, [inProgress, hasCompletedFirstSession, beginSession]);
+  }, [inProgress, hasCompletedFirstSession, beginSession, clearInProgress]);
 
   // Local UI state — drives the success-stamp visibility and the
   // small-viewport flag.
