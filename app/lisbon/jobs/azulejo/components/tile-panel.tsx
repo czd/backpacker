@@ -122,7 +122,12 @@ export const TilePanel = forwardRef<HTMLDivElement, TilePanelProps>(
               : isFilled
                 ? "filled"
                 : "missing";
+            // 1-indexed for the accessibility label (humans count from 1).
             const { row, col } = rowColOfSlot(slotIndex);
+            // 0-indexed for the translation math below — `rowColOfSlot`
+            // is +1'd, so don't reuse it for pixel arithmetic.
+            const col0 = slotIndex % 4;
+            const row0 = Math.floor(slotIndex / 4);
             const isHinted = !!hintedSlots?.[slotIndex];
             return (
               <div
@@ -184,8 +189,11 @@ export const TilePanel = forwardRef<HTMLDivElement, TilePanelProps>(
                         height: panelSize,
                         // Translate the sub-region so the slot's
                         // 80×80 (or 72×72) cell of the composite
-                        // appears at this slot's position.
-                        transform: `translate(-${col * tileSize}px, -${row * tileSize}px)`,
+                        // appears at this slot's position. Uses
+                        // 0-indexed col/row (NOT the 1-indexed values
+                        // from rowColOfSlot, which are for accessibility
+                        // labels only).
+                        transform: `translate(-${col0 * tileSize}px, -${row0 * tileSize}px)`,
                       }}
                       aria-hidden="true"
                     >

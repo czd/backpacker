@@ -74,6 +74,13 @@ export type AzulejoActions = {
   /** Complete the panel — clear in-progress, mark first-session. */
   completeSession: () => void;
   /**
+   * Mark the first-session flag without clearing inProgress. The
+   * completion path uses this so the success-stamp can render for its
+   * full 1.5s hold before the route navigates; `clearInProgress` runs
+   * at nav time, not at detection.
+   */
+  markFirstSessionCompleted: () => void;
+  /**
    * Save the current snapshot verbatim (used on leave / take-break).
    * No-op if no session is in flight.
    */
@@ -120,6 +127,13 @@ export const useAzulejoStore = create<AzulejoState & AzulejoActions>()(
           inProgress: null,
           hasCompletedFirstSession: true,
         }),
+
+      // Mark the first-session flag without clearing inProgress.
+      // The completion path uses this so the success-stamp can render
+      // for its full hold duration before the route navigates back to
+      // the map — clearInProgress runs at nav time, not at detection.
+      markFirstSessionCompleted: () =>
+        set({ hasCompletedFirstSession: true }),
 
       saveSession: (snapshot) => set({ inProgress: snapshot }),
 

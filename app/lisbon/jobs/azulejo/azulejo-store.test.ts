@@ -98,6 +98,29 @@ describe("useAzulejoStore — persistence + lifecycle", () => {
     expect(useAzulejoStore.getState().hasCompletedFirstSession).toBe(true);
   });
 
+  it("markFirstSessionCompleted flips the flag without clearing in-progress", () => {
+    // The completion path uses this so the SuccessStamp can render
+    // for its full 1.5s hold against the still-set inProgress layout.
+    // clearInProgress runs at nav time, not at detection.
+    const snapshot = {
+      panelVariant: "blue-white" as const,
+      placements: { 2: "t0" as const, 4: "t1" as const, 11: "t2" as const, 13: "t3" as const },
+      tilesRemainingInTray: [] as readonly never[],
+      startedAt: 1000,
+    };
+    useAzulejoStore.getState().beginSession({
+      ...snapshot,
+      tilesRemainingInTray: [...snapshot.tilesRemainingInTray],
+    });
+    useAzulejoStore.getState().markFirstSessionCompleted();
+    expect(useAzulejoStore.getState().hasCompletedFirstSession).toBe(true);
+    expect(useAzulejoStore.getState().inProgress).not.toBeNull();
+    // clearInProgress is the second step.
+    useAzulejoStore.getState().clearInProgress();
+    expect(useAzulejoStore.getState().inProgress).toBeNull();
+    expect(useAzulejoStore.getState().hasCompletedFirstSession).toBe(true);
+  });
+
   it("saveSession is the leave/take-break path — stores the snapshot", () => {
     const snapshot = {
       panelVariant: "blue-white" as const,

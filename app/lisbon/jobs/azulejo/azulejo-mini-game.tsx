@@ -89,7 +89,13 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
   const beginSession = useAzulejoStore((s) => s.beginSession);
   const placeTile = useAzulejoStore((s) => s.placeTile);
   const setTrayOrder = useAzulejoStore((s) => s.setTrayOrder);
-  const completeSession = useAzulejoStore((s) => s.completeSession);
+  // Deliberately not subscribing to `completeSession` — see the
+  // completion useEffect below for why we use the two-step
+  // markFirstSessionCompleted + clearInProgress pattern instead.
+  const markFirstSessionCompleted = useAzulejoStore(
+    (s) => s.markFirstSessionCompleted,
+  );
+  const clearInProgress = useAzulejoStore((s) => s.clearInProgress);
   const saveSession = useAzulejoStore((s) => s.saveSession);
 
   const rested = usePlayerStore((s) => s.rested);
@@ -97,6 +103,12 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
   // Initialize a fresh session if no in-progress snapshot exists.
   // Done in an effect (post-hydration) so SSR doesn't write to the
   // store. The initialization is idempotent.
+  //
+  // Resets `completedRef` for the new session — when Next's router
+  // cache reuses the component instance across visits, the ref would
+  // otherwise stay `true` from a prior completion and silently
+  // short-circuit the next completion's payout + nav. Reset on the
+  // same beat as `beginSession`.
   useEffect(() => {
     if (inProgress) return;
     const variant = selectPanelVariant(hasCompletedFirstSession);
@@ -107,6 +119,7 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
       tilesRemainingInTray: trayOrder,
       startedAt: Date.now(),
     };
+    completedRef.current = false;
     beginSession(snapshot);
   }, [inProgress, hasCompletedFirstSession, beginSession]);
 
@@ -123,6 +136,10 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
   // Tired-band first-only-hint discipline: once the player has been
   // hinted in the tired band this session, no further hints fire.
   const tiredHintFiredRef = useRef(false);
+  // Completion guard — set true on first detection so the payout +
+  // nav setTimeout fire exactly once per session. Reset in the
+  // beginSession effect so the next session re-arms.
+  const completedRef = useRef(false);
 
   // Panel size — small viewport (360-width) collapses to 288×288.
   const [small, setSmall] = useState(false);
@@ -316,7 +333,14 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
 
   // Completion detection. When all 4 placements land, fire the success
   // stamp + payout + drain + nav.
-  const completedRef = useRef(false);
+  //
+  // We deliberately do NOT call `completeSession()` here — that would
+  // clear `inProgress`, which causes the render guard above to early-
+  // return the empty shell, unmounting the just-set `<SuccessStamp />`
+  // before it can paint. Instead: set the first-completion flag now
+  // (so panel selection randomizes on next entry), let the stamp
+  // render against the still-set inProgress layout, and clear the
+  // in-progress row + navigate together at the end of the hold.
   useEffect(() => {
     if (!inProgress) return;
     if (completedRef.current) return;
@@ -327,13 +351,14 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
     // seam (PR5) catches the income while the route's still mounted.
     usePlayerStore.getState().creditWallet(PAYOUT_CENTS);
     usePlayerStore.getState().drainRested(COMPLETION_RESTED_DRAIN);
-    completeSession();
+    markFirstSessionCompleted();
     setShowStamp(true);
     const id = window.setTimeout(() => {
+      clearInProgress();
       router.push(exitTo);
     }, COMPLETE_HOLD_MS);
     return () => window.clearTimeout(id);
-  }, [inProgress, completeSession, router, exitTo]);
+  }, [inProgress, markFirstSessionCompleted, clearInProgress, router, exitTo]);
 
   // Leave handler. Save in-progress + nav.
   const handleLeave = useCallback(() => {
