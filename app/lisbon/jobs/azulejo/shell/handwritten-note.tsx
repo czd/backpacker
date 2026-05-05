@@ -76,7 +76,14 @@ export function HandwrittenNote({
         className="block font-handwritten leading-snug"
         style={{
           fontSize: 18,
-          color: "var(--foreground)",
+          // Hardcoded ink colour rather than `var(--foreground)`: the
+          // note paper is itself hardcoded warm-cream (#F4ECD6) in both
+          // themes — so the ink must also be theme-stable. Otherwise
+          // dark mode flips --foreground to a light value, producing
+          // light-on-cream (invisible). This warm dark-brown matches
+          // the success-stamp's #7A4A28 ink register but slightly
+          // darker for body-text contrast (~12:1 against the paper).
+          color: "#3A2C1E",
           // Caveat needs a touch of letter-spacing tuning to read warm.
           letterSpacing: "0.005em",
         }}
