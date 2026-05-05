@@ -116,18 +116,24 @@ export function DragTile({
       ? 1.5
       : -1.5;
 
+  // The 40px thumb-offset (UI Designer Topic 3) is intentionally NOT
+  // applied via the variant's `y`. Mixing animated `y` with Framer
+  // Motion's `drag` on the same axis fights the drag's pointer delta:
+  // the variant's spring keeps trying to settle y at -40 while the
+  // drag system accumulates pointer offset, producing a "stuck until
+  // threshold" feel where the tile doesn't track the finger until the
+  // drag delta overcomes the lift spring. Deferred to M5 polish via
+  // a controls-based imperative offset (issue tracked in PR7-followup).
   const variants: Variants = {
     rest: {
       scale: 1,
       rotate: 0,
-      y: 0,
       boxShadow:
         "0 1px 2px 0 color-mix(in oklab, rgba(40,28,16,0.18), transparent)",
     },
     lift: {
       scale: reducedMotion ? 1 : 1.06,
       rotate: rotateOnLift,
-      y: -THUMB_OFFSET_PX,
       boxShadow:
         "0 8px 16px -2px rgba(40, 28, 16, 0.35), 0 2px 4px rgba(40, 28, 16, 0.22)",
     },
