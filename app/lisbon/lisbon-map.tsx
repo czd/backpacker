@@ -18,6 +18,7 @@ import type { Doc } from "../../convex/_generated/dataModel";
 import { AvatarMarker } from "./avatar-marker";
 import { phaseOf, useGameClockStore, type Phase } from "./game-clock-store";
 import { canAfford, usePlayerStore } from "./player-store";
+import { useWorldPositionStore } from "./world-position-store";
 import {
   bearingDeg,
   boundsForFit,
@@ -476,18 +477,36 @@ export function LisbonMap() {
   // POI exactly. When a fast-travel completes, we set this to the
   // destination POI's slug; the drawer derives `isAtPoi` from
   // `currentPoiSlug === selectedPoi.slug`.
-  const [currentPoiSlug, setCurrentPoiSlug] = useState<string | null>(
-    AVATAR_START_SLUG,
+  //
+  // Initial value reads from `useWorldPositionStore` so the avatar
+  // resumes where the player left it across sibling-route navigations
+  // (`/lisbon/jobs/azulejo` and back) and across same-device reloads.
+  // Pre-PR7 this was a plain `useState(AVATAR_START_SLUG)` which
+  // teleported the player to the airport every time the map remounted.
+  const [currentPoiSlug, setCurrentPoiSlugLocal] = useState<string | null>(
+    () => {
+      if (typeof window === "undefined") return AVATAR_START_SLUG;
+      return useWorldPositionStore.getState().currentPoiSlug ?? AVATAR_START_SLUG;
+    },
   );
+  // Wrap the local setter so every slug change also mirrors into the
+  // persisted store. Coordinates flow through `setArrival` instead —
+  // the only callers that need to update the slug also know the
+  // destination POI's coords (line ~971, on arrival).
+  const setCurrentPoiSlug = setCurrentPoiSlugLocal;
 
-  // Avatar state — see AGENTS.md §7.1. Initial position is the airport
-  // (per the brief's narrative beat: the player has just arrived). The
+  // Avatar state — see AGENTS.md §7.1. Initial position resumes from
+  // the persisted store (same rationale as `currentPoiSlug` above). The
   // `traveling` flag drives the avatar marker's accelerated pulse and the
   // dotted-line trail's visibility. `facing` is the current bearing (0 =
   // north) and is set to point at the destination when a fast-travel
   // begins. `trailEnd` records where the trail terminates while traveling
   // *and* during the brief fade-out window after arrival; null otherwise.
-  const [avatar, setAvatar] = useState<LngLat>(AIRPORT_COORDS);
+  const [avatar, setAvatar] = useState<LngLat>(() => {
+    if (typeof window === "undefined") return AIRPORT_COORDS;
+    const { avatarLng, avatarLat } = useWorldPositionStore.getState();
+    return { lng: avatarLng, lat: avatarLat };
+  });
   const [traveling, setTraveling] = useState(false);
   const [facing, setFacing] = useState(0);
   const [trail, setTrail] = useState<{
@@ -968,7 +987,15 @@ export function LisbonMap() {
       //    motion, per §6.5. The half-snap re-pan with offset is
       //    handled by the existing panToPoi via the snap-change
       //    callback chain.
+      //
+      // Persist the arrival to `useWorldPositionStore` so a sibling-
+      // route nav (e.g., into the mini-game and back) restores the
+      // avatar at this POI rather than teleporting back to the airport.
       setCurrentPoiSlug(poi.slug);
+      useWorldPositionStore.getState().setArrival(poi.slug, {
+        lng: poi.lng,
+        lat: poi.lat,
+      });
       if (!reducedMotion) {
         setActiveSnapPoint(DEFAULT_SNAP);
       }
