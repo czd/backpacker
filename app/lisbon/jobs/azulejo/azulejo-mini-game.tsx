@@ -117,16 +117,20 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
   // completion payout/stamp.
   useEffect(() => {
     if (inProgress) {
-      const def = PANEL_DEFINITIONS[inProgress.panelVariant];
-      if (isPanelComplete(inProgress.placements, def.missingSlots)) {
-        // Block the completion useEffect from firing this render —
-        // both effects see the same `inProgress` closure value, so
-        // setting completedRef here prevents a spurious payout +
-        // stamp on stale state. The next render sees inProgress=null
-        // and the fresh-session branch below resets the ref.
-        completedRef.current = true;
-        clearInProgress();
+      // Stale-state cleanup is FIRST-RENDER ONLY. If the player just
+      // dropped the 4th tile in a normal session, inProgress has
+      // become complete *during gameplay* — that's the completion
+      // useEffect's territory, not ours. Mid-game completions would
+      // otherwise be silently swallowed here (clearing the row +
+      // blocking the real completion via completedRef).
+      if (justMountedRef.current) {
+        const def = PANEL_DEFINITIONS[inProgress.panelVariant];
+        if (isPanelComplete(inProgress.placements, def.missingSlots)) {
+          completedRef.current = true;
+          clearInProgress();
+        }
       }
+      justMountedRef.current = false;
       return;
     }
     const variant = selectPanelVariant(hasCompletedFirstSession);
@@ -139,6 +143,7 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
     };
     completedRef.current = false;
     beginSession(snapshot);
+    justMountedRef.current = false;
   }, [inProgress, hasCompletedFirstSession, beginSession, clearInProgress]);
 
   // Local UI state — drives the success-stamp visibility and the
@@ -158,6 +163,15 @@ export function AzulejoMiniGame({ exitTo = "/lisbon" }: AzulejoMiniGameProps) {
   // nav setTimeout fire exactly once per session. Reset in the
   // beginSession effect so the next session re-arms.
   const completedRef = useRef(false);
+  // First-render guard for the self-heal cleanup. Without this, the
+  // self-heal misfires during normal completion: the moment a player
+  // drops the 4th tile, `inProgress` becomes complete, the beginSession
+  // useEffect re-runs and treats it as "stale state" — clearing it
+  // and blocking the real completion useEffect via `completedRef`.
+  // Net: no payout, no stamp, no nav. The cleanup is only correct on
+  // the very first render (loaded from localStorage in a complete
+  // state); subsequent completions go through the proper path.
+  const justMountedRef = useRef(true);
 
   // Panel size — small viewport (360-width) collapses to 288×288.
   const [small, setSmall] = useState(false);
