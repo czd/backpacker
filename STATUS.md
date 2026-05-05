@@ -47,14 +47,43 @@ The FD flagged three followup items in their report; carrying forward:
 3. **Polychrome wear visual review** — UI Designer's spec was authored before final reference imagery; FD's SVG interpretation of Panel 2 should be re-reviewed by UI Designer + Anthropologist before M2 close-out, especially the antimony-pale-vs-saffron call (the load-bearing §9.3 line).
 4. **40px thumb-occlusion offset** — UI Designer's spec'd thumb-offset is deferred to M5 polish via a controls-based imperative offset that doesn't conflict with `drag.y`. The dragged tile sits *under* the thumb during drag; the lift shadow + scale + rotation still telegraph "this is being held" but it's a small UX regression vs the spec.
 
-### Next: dispatch PR8 (busking POI + paid transit)
+### Next: PR8 academic discovery complete (4 owner picks before GD review + FD dispatch)
 
-PR8 closes M2's "you're broke" path and the paid-transit gradient. Per the queued ADR-007 calibration:
-- **Largo do Carmo** as the busking POI (with the 1755-earthquake-memorial historical anchor per the M1-flagged historical context).
-- **Paid transit** — metro (~3s real / 20 game-min / €1.80 / rest-neutral) + taxi (~1s real / 10 game-min / €18 / rest-neutral). Walk stays the free default that drains rested.
-- Display rules from ADR-007: short Baixa hops show walk-only; airport-distance legs show walk + metro + taxi.
-- **Cultural-content reviews queued** (per AGENTS.md §9.3): Anthropologist (Lisboeta busking conventions, payout-language register, quieter-at-night norms); Historian (Largo do Carmo description must include 1755 earthquake / Carmo ruins context); Geographer (Largo do Carmo coordinate verification before seed insertion).
-- The route-based linger-verb pattern from PR7 (`payout` + `route` fields on `LingerVerb`) is reusable for PR8's busking and transit verbs.
+**Three-agent parallel dispatch landed 2026-05-05.** All verbatim reports captured at `research/lisbon/largo-do-carmo/` per the §12.7 discipline; synthesis README distills the decisions for owner; bibliography consolidated.
+
+**Locked from this discovery:**
+- **POI: Largo do Carmo confirmed** by all three agents independently. Anthropologist verifies it as a real Lisboeta busking site (CML license framework + Cape Verdean *cavaquinho* cohort + acoustic geometry); Historian confirms the dual 1755 + 1974 memorial layers (the Convento do Carmo's roofless Gothic skeleton + the Quartel do Carmo where Caetano surrendered to the MFA on 25 April 1974); Geographer confirms the spatial fit (centroid pivot of the M1 cluster, 240m N of hostel — borderline marker overlap but tolerable, no cluster-footprint expansion).
+- **Coordinates:** `lat: 38.71182, lng: -9.14055` (praça center / Chafariz do Carmo). Anchors both the 1389/1755 layer (Igreja do Carmo NE) and the 1974 layer (GNR HQ S) without privileging either. 5dp precision matches M1 seed style.
+- **Linger verb:** *"Play for spare change"* (Anthropologist's pick over the brainstorm's *"Busk"* — *busk* is an Anglo verb that doesn't translate cleanly).
+- **Payout:** random draw from `[150, 180, 200, 220, 250, 270, 300]` cents → €1.50–€3.00, mean ~€2.20. **All payouts succeed (no €0 outcomes — preserves §5.2 safety-net contract).** Mini-game pays 6.5× a busking session — the right gradient.
+- **Rested drain:** 0.02 flat per session per ADR-008.
+- **Success-message register:** narrator's voice (NOT NPC, NOT carnation-referencing). Three bands: *"A coin or two."* (low) / *"Some change. Better than nothing."* (mid) / *"A few coins. Not bad."* (high).
+- **Cultural anti-patterns (load-bearing — copy verbatim into PR8 description):** No fado (player's repertoire stays unspecified; fado lives in *casas de fado*, not buskers' idiom in central Lisbon). No "faded grandeur" / "melancholy beauty" / "decadent charm" / "saudade-untranslatable" vocabulary. No editorializing the carnations (description names them; M3 dialogue explains them).
+
+**4 owner picks before FD dispatch:**
+
+1. **Open-hours window: 06:00–22:00 vs 10:00–22:00.** Geographer + brainstorm say the conservative envelope (06:00–22:00, matches existing test cases); Anthropologist says the honest Lisboeta convention is 10:00–22:00 (cafés don't open until ~08:00; first morning busker at ~10:00). Both are one-line config changes.
+2. **POI type: new `square` type vs reuse `view`.** Both Anthropologist and Geographer recommend introducing a new `square` type (a *praça/largo* is a node of urban life — neither viewpoint nor destination; future-proofs Largo de São Domingos / Praça do Comércio / Tokyo *hiroba* / Marrakech *jemaa*). Geographer's fallback is `view` if FD judges schema bloat. **Avoid `sight`** for register reasons.
+3. **Description: Anthropologist Draft 1 vs Historian Candidate B.** Both ~30–40 words, both in M1-PR1 cadence, both cozy-anti-trivia. Difference: Historian Candidate B names "All Saints' Day 1755" explicitly; Anthropologist Draft 1 lets the ruin be there without dating it. Owner pick by which voice feels more "Lisboeta as the world's narrator."
+4. **Colonial-legacy ADR (§15) trigger:** hold "before Belém" (Historian) vs advance to "before M3 closes" (Anthropologist). Historian: §15 wording is Belém-specific; PR8's decolonization-naming is the *antidote* to Belém's empire-celebration register, not its equivalent. Anthropologist: M3 busker NPC (Cape Verdean Lisboeta carrying the *retornados* arc) needs the ADR's framing. Both agents agree PR8 itself ships without the ADR; the disagreement is on when it must be written.
+
+**Cross-cutting flags surfaced (carry forward):**
+- **Cape Verdean Lisboeta busker NPC at Largo do Carmo, M3.** Closes (partially) the M1 PR1 Africanness flag. Verbatim dialogue hooks in both reports.
+- **`travelDurationMs` elevation factor** — Mercado→Carmo is under-honest by ~30–40% (716m + 45m climb). Hook already designed in `app/lisbon/geo.ts`; carry as M2-close-out fixup or M5 polish, not PR8 prerequisite.
+- **Hillshade / 3D-tilt map style** — M1 PR1 flagged; PR8 reinforces. M5 polish.
+- **Elevador de Santa Justa as future M3+ POI candidate** — strong case (iconic 1900–1902 iron lattice, Mesnier de Ponsard not Eiffel-apprentice).
+- **Plaque-text verification flag for FD** — both agents flagged: do NOT quote plaque text without Mapillary/Wikimedia verification. No standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one.
+
+**Dispatch order after owner picks:**
+1. **Game Designer review** — confirm the 4 calibration picks against the M2 brainstorm's economic-gradient assumptions (€2.20 mean busking payout vs €15 mini-game vs €18 hostel — does this hold?).
+2. **Frontend Developer dispatch** — implement Largo do Carmo seed + busking linger-verb + paid-transit (metro + taxi) per the locked spec.
+
+**Paid-transit calibration (still from ADR-007, unchanged by PR8 discovery):**
+- Metro: ~3s real / 20 game-min / €1.80 / rest-neutral
+- Taxi: ~1s real / 10 game-min / €18 / rest-neutral
+- Walk: free default that drains rested
+- Display rules: short Baixa hops show walk-only; airport-distance legs show walk + metro + taxi
+- The route-based linger-verb pattern from PR7 (`payout` + `route` fields on `LingerVerb`) is reusable.
 
 ### Blocked on owner / next decisions
 - **`bunx convex run seed:seedLisbon`** to migrate Convex rows with PR3's `availability` field (still queued from earlier session). Idempotent + patch-only; safe to re-run.
