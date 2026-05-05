@@ -27,6 +27,7 @@
  */
 
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 export type PlayerState = {
   /** Canonical: cents (integer ≥ 0). 2500 = €25.00. */
@@ -73,57 +74,84 @@ export type PlayerState = {
 };
 
 // First-launch baseline per ADR-007: €25.00 = 2500 cents, rested = 1.0.
-export const usePlayerStore = create<PlayerState>((set, get) => ({
-  walletEurosCentsInternal: 2500,
-  rested: 1.0,
+export const usePlayerStore = create<PlayerState>()(
+  persist(
+    (set, get) => ({
+      walletEurosCentsInternal: 2500,
+      rested: 1.0,
 
-  chargeWallet: (cents) => {
-    if (!Number.isInteger(cents) || cents < 0) {
-      throw new Error(
-        `chargeWallet expects a non-negative integer cents value; got ${cents}`,
-      );
-    }
-    const current = get().walletEurosCentsInternal;
-    if (current < cents) {
-      throw new Error(
-        `Insufficient funds: need ${cents}, have ${current}. Callers must check canAfford() first.`,
-      );
-    }
-    set({ walletEurosCentsInternal: current - cents });
-  },
+      chargeWallet: (cents) => {
+        if (!Number.isInteger(cents) || cents < 0) {
+          throw new Error(
+            `chargeWallet expects a non-negative integer cents value; got ${cents}`,
+          );
+        }
+        const current = get().walletEurosCentsInternal;
+        if (current < cents) {
+          throw new Error(
+            `Insufficient funds: need ${cents}, have ${current}. Callers must check canAfford() first.`,
+          );
+        }
+        set({ walletEurosCentsInternal: current - cents });
+      },
 
-  creditWallet: (cents) => {
-    if (!Number.isInteger(cents) || cents < 0) {
-      throw new Error(
-        `creditWallet expects a non-negative integer cents value; got ${cents}`,
-      );
-    }
-    set((s) => ({
-      walletEurosCentsInternal: s.walletEurosCentsInternal + cents,
-    }));
-  },
+      creditWallet: (cents) => {
+        if (!Number.isInteger(cents) || cents < 0) {
+          throw new Error(
+            `creditWallet expects a non-negative integer cents value; got ${cents}`,
+          );
+        }
+        set((s) => ({
+          walletEurosCentsInternal: s.walletEurosCentsInternal + cents,
+        }));
+      },
 
-  setWallet: (cents) => {
-    set({ walletEurosCentsInternal: Math.max(0, Math.round(cents)) });
-  },
+      setWallet: (cents) => {
+        set({ walletEurosCentsInternal: Math.max(0, Math.round(cents)) });
+      },
 
-  drainRested: (amount) => {
-    if (amount < 0) {
-      throw new Error(
-        `drainRested expects a non-negative amount; got ${amount}. Use restoreRested to go up.`,
-      );
-    }
-    set((s) => ({ rested: Math.max(0, Math.min(1, s.rested - amount)) }));
-  },
+      drainRested: (amount) => {
+        if (amount < 0) {
+          throw new Error(
+            `drainRested expects a non-negative amount; got ${amount}. Use restoreRested to go up.`,
+          );
+        }
+        set((s) => ({ rested: Math.max(0, Math.min(1, s.rested - amount)) }));
+      },
 
-  restoreRested: () => {
-    set({ rested: 1.0 });
-  },
+      restoreRested: () => {
+        set({ rested: 1.0 });
+      },
 
-  setRested: (value) => {
-    set({ rested: Math.max(0, Math.min(1, value)) });
-  },
-}));
+      setRested: (value) => {
+        set({ rested: Math.max(0, Math.min(1, value)) });
+      },
+    }),
+    {
+      // Persist wallet + rested through dev-mode HMR resets, route-
+      // cache misses, and same-device reloads. Without this, the
+      // wallet silently reset to €25 on every dev save and on every
+      // mini-game route nav — the user-visible regression that drove
+      // this change. Per AGENTS.md §7.6 the eventual M2-PR-Save-State
+      // swaps this for Convex; the API surface stays identical.
+      name: "player-store",
+      storage: createJSONStorage(() => {
+        if (typeof window === "undefined") {
+          return {
+            getItem: () => null,
+            setItem: () => undefined,
+            removeItem: () => undefined,
+          } as unknown as Storage;
+        }
+        return window.localStorage;
+      }),
+      partialize: (state) => ({
+        walletEurosCentsInternal: state.walletEurosCentsInternal,
+        rested: state.rested,
+      }),
+    },
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Pure derived getters — exported for tests and for non-React consumers.

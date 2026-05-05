@@ -30,6 +30,7 @@
  */
 
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 export type Phase = "dawn" | "day" | "dusk" | "night";
 
@@ -53,19 +54,41 @@ type GameClockState = {
   setEpochMinute: (m: number) => void;
 };
 
-export const useGameClockStore = create<GameClockState>((set) => ({
-  // First-launch baseline: 14:30 day 1. The M1 narrative beat is "you just
-  // arrived at the airport"; afternoon-arrival reads cozily without an
-  // ambient pressure to do anything before nightfall. Wake-up on a clean
-  // game gives ~5h of "day" + ~2h of "dusk" + the option to sleep at the
-  // hostel — three POI visits worth of session time before night.
-  epochMinute: 870,
-  advance: (mins) =>
-    set((s) => ({
-      epochMinute: s.epochMinute + Math.max(0, Math.round(mins)),
-    })),
-  setEpochMinute: (m) => set({ epochMinute: Math.max(0, Math.round(m)) }),
-}));
+export const useGameClockStore = create<GameClockState>()(
+  persist(
+    (set) => ({
+      // First-launch baseline: 14:30 day 1. The M1 narrative beat is "you just
+      // arrived at the airport"; afternoon-arrival reads cozily without an
+      // ambient pressure to do anything before nightfall. Wake-up on a clean
+      // game gives ~5h of "day" + ~2h of "dusk" + the option to sleep at the
+      // hostel — three POI visits worth of session time before night.
+      epochMinute: 870,
+      advance: (mins) =>
+        set((s) => ({
+          epochMinute: s.epochMinute + Math.max(0, Math.round(mins)),
+        })),
+      setEpochMinute: (m) => set({ epochMinute: Math.max(0, Math.round(m)) }),
+    }),
+    {
+      // Persist the canonical integer through dev-mode HMR resets, route-
+      // cache misses, and same-device reloads. Per AGENTS.md §7.6 the
+      // eventual M2-PR-Save-State swaps this for Convex; the API surface
+      // (advance / setEpochMinute) doesn't change.
+      name: "game-clock",
+      storage: createJSONStorage(() => {
+        if (typeof window === "undefined") {
+          return {
+            getItem: () => null,
+            setItem: () => undefined,
+            removeItem: () => undefined,
+          } as unknown as Storage;
+        }
+        return window.localStorage;
+      }),
+      partialize: (state) => ({ epochMinute: state.epochMinute }),
+    },
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Pure derived getters — exported for tests and for non-React consumers.
