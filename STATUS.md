@@ -4,6 +4,66 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-05 — M2 PR7 azulejo mini-game shipped + real-phone verified
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`, **17 commits ahead of origin** (not yet pushed). PR1–PR7 shipped. **PR8 (busking POI + paid transit) is the only remaining M2 deliverable.**
+
+### Done this session
+**PR7 implementation (4 FD commits, ~3,272 lines):**
+- `1067022` `feat(m2/azulejo): scaffold tokens, panel data, persistence store`
+- `8f7cff7` `feat(m2/azulejo): tile + panel + tray + shell components`
+- `17c1f86` `feat(m2/azulejo): wire mini-game route + Mercado da Ribeira hand-off`
+- `6720fad` `test(m2/azulejo): playwright e2e at 390×844 + 360×640 reflow`
+
+**PR7 fixup train (8 commits, real-phone-driven):**
+- `3b44e49` `fix(m2/azulejo): two real-phone bugs — spring keyframes + drag y-fight` — Framer Motion forbids 3-keyframe arrays under `type: "spring"`; lift variant's `y: -40` thumb-offset fought the drag handler on the same axis. Dropped both; the spring's natural underdamped overshoot still delivers the rubber-stamp bounce.
+- `e51e1b1` `fix(m2/azulejo): three real-phone bugs — placed-tile rendering + completion flow` — `tile-panel.tsx` used 1-indexed `rowColOfSlot()` output as 0-indexed in the translate math (slots 11, 13 went blank; slots 2, 4 showed wrong fragments). Completion path cleared `inProgress` synchronously, hiding the success stamp via the `inProgress`-guarded layout. `completedRef` wasn't reset across sessions. Fixed all three: split `completeSession` into `markFirstSessionCompleted` + delayed `clearInProgress`; reset ref in beginSession effect.
+- `1d4f4a8` `fix(m2/azulejo): self-heal stale "already-complete" persisted state` — players with the pre-fix completion bug had a complete-but-not-cleared `inProgress` in localStorage; on entry the completion useEffect re-fired forever. Added a stale-state guard.
+- `ba508eb` `fix(m2/azulejo): pickup note text invisible in dark mode` — note paper hardcoded warm-cream `#F4ECD6`, but text used `var(--foreground)` which inverts in dark mode → light-on-cream invisibility. Hardcoded ink to `#3A2C1E` warm dark-brown to match the paper's theme-stable register. (The note is a physical object; the paper and the ink should both be theme-independent.)
+- `003c06f` `fix(m2): persist avatar position across sibling-route nav` — `lisbon-map.tsx` held `currentPoiSlug` + avatar lng/lat in component-local `useState`; on route nav back from the mini-game, React re-ran the initializers and teleported the player to the airport. New `useWorldPositionStore` (Zustand + persist middleware → localStorage) holds position; the map reads from it on first render and writes through `setArrival()` on each fast-travel completion.
+- `b98d0a8` `fix(m2): persist wallet/rested + game-clock through HMR resets` — added `persist` middleware to `usePlayerStore` and `useGameClockStore` (mirroring `azulejo-store` and the new `world-position-store`). Was the load-bearing fix that closed the wallet-stays-€25 regression: dev-mode HMR re-imports modules on every commit, silently re-instantiating module-singleton stores with their defaults. Persistence makes them immune to HMR + route cache + reloads.
+- `cac41eb` `fix(m2/azulejo): self-heal misfired during normal completion` — the stale-state guard from `1d4f4a8` fired on EVERY render where `inProgress` was complete, including the moment a player drops the 4th tile. Effect-execution order made the guard run before the completion useEffect, blocking the real payout. Gated the guard on a `justMountedRef` so it only fires on first render.
+
+**Owner real-phone verification (2026-05-05):** complete-puzzle → see stamp → 1.5s hold → nav back to map → wallet went €25 → €40. Re-entered, completed, €40 → €55. Position preserved (avatar stays at Mercado, no airport teleport). Time correctly frozen during the puzzle, advances only on walks. Persistence holds across hard reload after `localStorage.clear()`.
+
+**M2 PR7 Definition of Done verification:**
+- ✓ One mini-game (Lisbon azulejo tile-matching, plain React + Framer Motion + drag)
+- ✓ Drag (not click), thumb-friendly
+- ✓ Pays €15 on completion; failing costs nothing (per ADR-009)
+- ✓ Playable at 360×640, no horizontal scroll
+- ✓ Vitest **364/364** passing (was 324; +40); Playwright **10/10** new e2e + 47/48 full suite (1 pre-existing flake unrelated to PR7)
+- ✓ size-limit: `/lisbon/jobs/*` at **190.76 KB / 350 KB** ceiling (55%)
+- ✓ TypeScript clean
+- ✓ Cultural-content reviewed by Anthropologist + Historian (verbatim in `research/lisbon/azulejo-mini-game/`)
+- ✓ Visual reviewed by UI Designer (verbatim spec at `research/lisbon/azulejo-mini-game/ui-designer-2026-05-04.md`)
+- ✓ Real-phone verified by owner
+
+### PR7-followup queue (deferred, not blocking M2 close)
+
+The FD flagged three followup items in their report; carrying forward:
+1. **Drag-to-complete e2e automation** — Framer Motion drag is brittle in headless Playwright. FD recommends a `__azulejoDebug` window seam (mirrors `__player` + `__gameClock`) so e2e can drive completions deterministically. Would also unlock the 3-real-min soft-break drawer e2e (currently impossible to test without waiting 3 minutes).
+2. **3-min soft-break drawer e2e** — same shape as #1.
+3. **Polychrome wear visual review** — UI Designer's spec was authored before final reference imagery; FD's SVG interpretation of Panel 2 should be re-reviewed by UI Designer + Anthropologist before M2 close-out, especially the antimony-pale-vs-saffron call (the load-bearing §9.3 line).
+4. **40px thumb-occlusion offset** — UI Designer's spec'd thumb-offset is deferred to M5 polish via a controls-based imperative offset that doesn't conflict with `drag.y`. The dragged tile sits *under* the thumb during drag; the lift shadow + scale + rotation still telegraph "this is being held" but it's a small UX regression vs the spec.
+
+### Next: dispatch PR8 (busking POI + paid transit)
+
+PR8 closes M2's "you're broke" path and the paid-transit gradient. Per the queued ADR-007 calibration:
+- **Largo do Carmo** as the busking POI (with the 1755-earthquake-memorial historical anchor per the M1-flagged historical context).
+- **Paid transit** — metro (~3s real / 20 game-min / €1.80 / rest-neutral) + taxi (~1s real / 10 game-min / €18 / rest-neutral). Walk stays the free default that drains rested.
+- Display rules from ADR-007: short Baixa hops show walk-only; airport-distance legs show walk + metro + taxi.
+- **Cultural-content reviews queued** (per AGENTS.md §9.3): Anthropologist (Lisboeta busking conventions, payout-language register, quieter-at-night norms); Historian (Largo do Carmo description must include 1755 earthquake / Carmo ruins context); Geographer (Largo do Carmo coordinate verification before seed insertion).
+- The route-based linger-verb pattern from PR7 (`payout` + `route` fields on `LingerVerb`) is reusable for PR8's busking and transit verbs.
+
+### Blocked on owner / next decisions
+- **`bunx convex run seed:seedLisbon`** to migrate Convex rows with PR3's `availability` field (still queued from earlier session). Idempotent + patch-only; safe to re-run.
+- **Push to origin?** Branch is 17 commits ahead of `origin/feat/m2-energy-jobs`.
+- **PR8 dispatch order?** Suggest: academic discovery first (Anthropologist + Historian + Geographer in parallel for Largo do Carmo + busking), then GD review of the calibration assumptions before FD ships.
+- **PR7-followup priority** — handle now (small `__azulejoDebug` window seam to unlock e2e), or roll into M2 close-out fixup, or defer to M5?
+
+---
+
 ## 2026-05-04 — `research/` pattern + `CREDITS.md` established; PR7 still queued
 
 ### Active milestone
