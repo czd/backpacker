@@ -512,3 +512,475 @@ describe("PoiDrawer — linger button cost rendering (M2 PR4)", () => {
     expect(spinner).not.toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// M2 PR8 — busking + transit + soft-refusal + description-once.
+// ---------------------------------------------------------------------------
+
+const CARMO_FIXTURE: Poi = {
+  slug: "largo-do-carmo",
+  name: "Largo do Carmo",
+  type: "square",
+  description:
+    "Largo do Carmo — plane trees, a Pombaline fountain, and a Gothic church that's been roofless since All Saints' Day 1755. The barracks across the square is a working GNR post; the carnations on the gate are usually fresher than they should be.",
+  openHours: "Open 06:00–22:00",
+};
+
+describe("PoiDrawer — busking verb (M2 PR8)", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ walletEurosCentsInternal: 2500, rested: 1.0 });
+  });
+
+  it('busking verb renders the locked label "Play for spare change" with no payout suffix', () => {
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Play for spare change",
+          quantum: 30,
+          enabled: true,
+          kind: "busking",
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent(/play for spare change/i);
+    // No €-symbol — busking has no fixed payout suffix; payout is
+    // RNG-resolved at completion.
+    expect(btn.textContent ?? "").not.toMatch(/€/);
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveAttribute("data-kind", "busking");
+    // Affordable=true is the default for busking — no cost gate.
+    expect(btn).toHaveAttribute("data-affordable", "true");
+  });
+
+  it("busking verb stays enabled even when wallet is at €0 (§5.2 safety-net)", () => {
+    // Critical contract: the broke player MUST be able to busk. This
+    // is what closes §5.2's "going to zero is not a fail state" line.
+    usePlayerStore.setState({ walletEurosCentsInternal: 0 });
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Play for spare change",
+          quantum: 30,
+          enabled: true,
+          kind: "busking",
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveTextContent(/play for spare change/i);
+    // No "Need €X" soft-refusal for busking.
+    expect(btn.textContent ?? "").not.toMatch(/need €/i);
+  });
+
+  it("busking verb has the verbose aria-label", () => {
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Play for spare change",
+          quantum: 30,
+          enabled: true,
+          kind: "busking",
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toHaveAttribute(
+      "aria-label",
+      "Play for spare change to earn money.",
+    );
+  });
+
+  it("busking message renders inline below the linger button when set", () => {
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Play for spare change",
+          quantum: 30,
+          enabled: true,
+          kind: "busking",
+        }}
+        onLinger={() => {}}
+        buskingMessage="A few coins. Not bad."
+      />,
+    );
+    const msg = screen.getByTestId("poi-drawer-busking-message");
+    expect(msg).toBeInTheDocument();
+    expect(msg).toHaveTextContent(/a few coins\. not bad\./i);
+    // role="status" + aria-live="polite" for accessible announcement.
+    expect(msg).toHaveAttribute("role", "status");
+    expect(msg).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("busking message does NOT render for non-busking verbs (defense)", () => {
+    // A stray buskingMessage prop on a non-busking POI should be a
+    // no-op. The drawer's contract gates the message render on
+    // verb.kind === "busking".
+    render(
+      <PoiDrawer
+        poi={{ ...FIXTURE, type: "view" }}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Take it in",
+          quantum: 30,
+          enabled: true,
+        }}
+        onLinger={() => {}}
+        buskingMessage="A few coins. Not bad."
+      />,
+    );
+    expect(
+      screen.queryByTestId("poi-drawer-busking-message"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("busking message does NOT render when buskingMessage is null", () => {
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Play for spare change",
+          quantum: 30,
+          enabled: true,
+          kind: "busking",
+        }}
+        onLinger={() => {}}
+        buskingMessage={null}
+      />,
+    );
+    expect(
+      screen.queryByTestId("poi-drawer-busking-message"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("PoiDrawer — paid transit modes (M2 PR8)", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ walletEurosCentsInternal: 2500, rested: 1.0 });
+  });
+
+  it("renders metro + taxi buttons when transitModes includes them (airport-distance)", () => {
+    const onTransit = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={onTransit}
+      />,
+    );
+    expect(screen.getByTestId("poi-drawer-transit-metro")).toBeInTheDocument();
+    expect(screen.getByTestId("poi-drawer-transit-taxi")).toBeInTheDocument();
+    // Walk is the existing primary "Travel here" button.
+    expect(
+      screen.getByTestId("poi-drawer-travel-button"),
+    ).toBeInTheDocument();
+  });
+
+  it("metro button label is 'Take the metro · €1.80' when affordable", () => {
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={() => {}}
+      />,
+    );
+    const metro = screen.getByTestId("poi-drawer-transit-metro");
+    expect(metro).toHaveTextContent(/take the metro/i);
+    expect(metro).toHaveTextContent(/€1\.80/);
+    expect(metro).toBeEnabled();
+    expect(metro).toHaveAttribute("data-affordable", "true");
+    expect(metro).toHaveAttribute("data-cost", "180");
+  });
+
+  it("taxi button label is 'Take a taxi · €18' when affordable", () => {
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={() => {}}
+      />,
+    );
+    const taxi = screen.getByTestId("poi-drawer-transit-taxi");
+    expect(taxi).toHaveTextContent(/take a taxi/i);
+    expect(taxi).toHaveTextContent(/€18/);
+    expect(taxi).toBeEnabled();
+    expect(taxi).toHaveAttribute("data-affordable", "true");
+    expect(taxi).toHaveAttribute("data-cost", "1800");
+  });
+
+  it("metro tap fires onTransit('metro')", () => {
+    const onTransit = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={onTransit}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("poi-drawer-transit-metro"));
+    expect(onTransit).toHaveBeenCalledWith("metro");
+  });
+
+  it("metro shows soft-refusal label when wallet < €1.80", () => {
+    usePlayerStore.setState({ walletEurosCentsInternal: 150 });
+    const onSoftRefusal = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={() => {}}
+        onSoftRefusal={onSoftRefusal}
+      />,
+    );
+    const metro = screen.getByTestId("poi-drawer-transit-metro");
+    expect(metro).toHaveTextContent(/need €1/i);
+    expect(metro).toHaveTextContent(/try busking\?/i);
+    expect(metro).toHaveAttribute("data-affordable", "false");
+  });
+
+  it("tapping the soft-refused metro button fires onSoftRefusal (deep-link)", () => {
+    usePlayerStore.setState({ walletEurosCentsInternal: 150 });
+    const onTransit = vi.fn();
+    const onSoftRefusal = vi.fn();
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={onTransit}
+        onSoftRefusal={onSoftRefusal}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("poi-drawer-transit-metro"));
+    // The deep-link fires; the action handler does NOT.
+    expect(onSoftRefusal).toHaveBeenCalledTimes(1);
+    expect(onTransit).not.toHaveBeenCalled();
+  });
+
+  it("hides metro/taxi buttons when transitModes is just ['walk'] (short hop)", () => {
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk"]}
+        onTransit={() => {}}
+      />,
+    );
+    // Only the legacy walk "Travel here" button shows.
+    expect(
+      screen.getByTestId("poi-drawer-travel-button"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("poi-drawer-transit-metro"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("poi-drawer-transit-taxi"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides ALL transit buttons when isAtPoi is true (You're-here state)", () => {
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+        transitModes={["walk", "metro", "taxi"]}
+        onTransit={() => {}}
+        isAtPoi
+      />,
+    );
+    // The primary travel button reads "You're here" + disabled.
+    const travel = screen.getByTestId("poi-drawer-travel-button");
+    expect(travel).toBeDisabled();
+    // Metro and taxi buttons don't render at all when at-POI.
+    expect(
+      screen.queryByTestId("poi-drawer-transit-metro"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("poi-drawer-transit-taxi"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("preserves M1+ behavior when transitModes is omitted", () => {
+    // Legacy callers (every M1 vitest, every PR4-PR7 e2e) don't pass
+    // transitModes. The drawer should render the lone walk button as
+    // before. This test pins the back-compat contract.
+    render(
+      <PoiDrawer
+        poi={FIXTURE}
+        onOpenChange={() => {}}
+        onTravel={() => {}}
+      />,
+    );
+    expect(
+      screen.getByTestId("poi-drawer-travel-button"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("poi-drawer-transit-metro"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("poi-drawer-transit-taxi"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("PoiDrawer — soft-refusal deep-link on hostel sleep (M2 PR8)", () => {
+  beforeEach(() => {
+    usePlayerStore.setState({ walletEurosCentsInternal: 0, rested: 0.5 });
+  });
+
+  it("hostel soft-refusal tap fires onSoftRefusal (not onLinger)", () => {
+    // Pre-PR8: tapping the disabled "Need €18 — try busking?" button
+    // was a fully no-op (the button was disabled).
+    // PR8: when onSoftRefusal is wired, the button stays clickable
+    // and tapping deep-links to the busking POI.
+    const onLinger = vi.fn();
+    const onSoftRefusal = vi.fn();
+    render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={onLinger}
+        onSoftRefusal={onSoftRefusal}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toHaveTextContent(/need €18/i);
+    expect(btn).toHaveTextContent(/try busking\?/i);
+    fireEvent.click(btn);
+    expect(onSoftRefusal).toHaveBeenCalledTimes(1);
+    expect(onLinger).not.toHaveBeenCalled();
+  });
+
+  it("hostel without onSoftRefusal stays fully disabled (PR4 legacy contract)", () => {
+    // Without a deep-link wired, the button is disabled and a tap is
+    // a no-op. This protects unit tests / legacy callers from
+    // accidentally falling into a behavior that requires the deep-
+    // link to be present.
+    const onLinger = vi.fn();
+    render(
+      <PoiDrawer
+        poi={HOSTEL_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        lingerVerb={{
+          label: "Sleep until morning",
+          quantum: 480,
+          enabled: true,
+          cost: 1800,
+        }}
+        onLinger={onLinger}
+      />,
+    );
+    const btn = screen.getByTestId("poi-drawer-linger-button");
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onLinger).not.toHaveBeenCalled();
+  });
+});
+
+describe("PoiDrawer — description-once-per-session (M2 PR8)", () => {
+  it("renders description prose by default (showDescription absent → true)", () => {
+    // Back-compat: every M1 + PR4-PR7 caller omits showDescription.
+    // The default should match the pre-PR8 behavior (always render).
+    render(<PoiDrawer poi={CARMO_FIXTURE} onOpenChange={() => {}} />);
+    const desc = screen.getByTestId("poi-drawer-description");
+    // Visible — not sr-only.
+    expect(desc.className).not.toMatch(/sr-only/);
+    expect(desc).toHaveTextContent(/All Saints' Day 1755/);
+  });
+
+  it("renders description prose when showDescription=true", () => {
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        showDescription
+      />,
+    );
+    const desc = screen.getByTestId("poi-drawer-description");
+    expect(desc.className).not.toMatch(/sr-only/);
+    expect(desc).toHaveTextContent(/All Saints' Day 1755/);
+  });
+
+  it("suppresses the visible description when showDescription=false (sr-only carrier)", () => {
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        showDescription={false}
+      />,
+    );
+    // The description testid is still in the DOM (for screen readers
+    // and aria-describedby), but the visible class is sr-only.
+    const desc = screen.getByTestId("poi-drawer-description");
+    expect(desc.className).toMatch(/sr-only/);
+    expect(desc).toHaveAttribute("data-description-rendered", "false");
+    // The aria-label carries the prose for screen readers — same
+    // reachable content, different visual mode.
+    expect(desc).toHaveAttribute("aria-label");
+  });
+
+  it("description suppression keeps the linger button visible (the action area is the point)", () => {
+    // The whole point of suppressing the prose is to make the action
+    // area immediately reachable. Verify the linger button still
+    // renders alongside the suppressed description.
+    render(
+      <PoiDrawer
+        poi={CARMO_FIXTURE}
+        onOpenChange={() => {}}
+        isAtPoi
+        showDescription={false}
+        lingerVerb={{
+          label: "Play for spare change",
+          quantum: 30,
+          enabled: true,
+          kind: "busking",
+        }}
+        onLinger={() => {}}
+      />,
+    );
+    expect(
+      screen.getByTestId("poi-drawer-linger-button"),
+    ).toBeInTheDocument();
+  });
+});
