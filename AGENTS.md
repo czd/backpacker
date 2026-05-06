@@ -264,9 +264,10 @@ Every city ships with at least:
 
 ### 9.3 Cultural authenticity guard
 Every piece of cultural content must be reviewed by the **Anthropologist** + **Historian** + **Geographer** agents (see §11) before merge. We are *especially* careful about:
-- Avoiding stereotypes (no "Italian chef twirls mustache").
+- Avoiding stereotypes (no "Italian chef twirls mustache"). Per-culture stereotype-trap rules are codified in `DECISIONS.md` ADR-003 (see "Performer / repertoire conventions" amendment for Lisbon's no-fado-in-busking rule and the framework for adding rows per future city).
 - Avoiding sacred/sensitive content as set dressing (e.g. religious sites are described respectfully or omitted).
-- Real names are used only for genuinely public landmarks; NPCs are fictional.
+- Real names are used only for genuinely public landmarks; NPCs are fictional. ADR-003 governs the lodging-fictional default and per-culture extensions.
+- **Plaque text and inscription quotes must be verified** against current Mapillary or Wikimedia photos before merge. Prevents invented monuments (e.g., there is *no* standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one). Applies to POI descriptions, M3 NPC dialogue, and M4 journal notes.
 - Where we represent a culture, we research from sources *from* that culture, not just about it.
 
 ---
@@ -428,6 +429,7 @@ When starting a session on this project:
 ## 15. Open questions (track and resolve in `DECISIONS.md`)
 
 - **Style and tone of NPC dialogue:** literary? conversational? slightly whimsical? Pick a voice with the Narrative Designer in M3.
+- **Colonial-legacy ADR (Lisbon empire framing).** Surfaced in M1 PR1 as a future cross-cutting topic; carried forward across PR7 (azulejo / Brazilian-gold-financed-Master-Cycles connection) and PR8 (25 April 1974 / Carnation Revolution / decolonization at Largo do Carmo). **Trigger: before any Belém POI** (the *Padrão dos Descobrimentos* / *Mosteiro dos Jerónimos* / Tower of Belém register valorizes the 15th–16th c. maritime expansion; the ADR's load-bearing question lives there). **Clarification (locked 2026-05-06 per GD weigh-in):** M3 dispatches that touch decolonization personally (e.g., a Cape Verdean Lisboeta busker NPC at Largo do Carmo whose backstory carries the *retornados* arc) may proceed *without* the ADR — the personal-historical register is honest without an ADR-level structural position. M3 dispatches that require empire-structural framing (e.g., naming the colonial empire in dialogue, characterizing the imperial economy) trigger the ADR write-up before the dispatch lands. The full discussion lives in `research/lisbon/largo-do-carmo/` (Anthropologist + Historian disagreed on the trigger date; GD weighed in as team lead).
 - ~~**Map tile provider:**~~ Resolved by ADR-002 (MapTiler).
 - **City entry experience:** does landing in a city default to the top-down map, or to a welcome / home-base screen with curated actions (one of which is "explore the streets" — opening the map, perhaps as a gradient corner that expands)? Pillar #2 (calm) and the §5.1 5–15min session length may favor the welcome screen — it orients the player faster than a map and carries city flavor more strongly (city palette, illustration, ambient details, a phrase of the day). The brief's M4 vintage-postcard cinematic (§7.5, §13 M4 DoD) dismisses *somewhere* — that somewhere is the question. Decide with the Game Designer at M4 kickoff. **Routes are stable either way:** `/lisbon` can render either the map (current) or a welcome screen with the map as a contained panel; child routes (`/lisbon/jobs/<slug>`, etc.) are unaffected.
 - **Auth flow specifics:** Convex Auth's anonymous → linked story is currently fine but verify in M0.

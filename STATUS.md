@@ -89,9 +89,20 @@ The FD flagged three followup items in their report; carrying forward:
 
 **GD playtest goal flagged for M2 close-out:** the **PR7→PR8 narrative arc is the project's first playtestable demonstration of pillar #4** ("learning is a side effect of presence") at full power. Player who completes the azulejo mini-game (Estado Novo's azulejo-as-nationalism program at the 1942 airport terminal) AND visits Largo do Carmo (where the regime fell at 17:30 on 25 April 1974) has a coherent picture of "the regime that ran Portugal until 1974" without ever being lectured. Real-phone playtest after PR8 ships.
 
-**Dispatch order after owner picks:**
-1. **Frontend Developer dispatch** — implement Largo do Carmo seed + busking linger-verb + paid-transit (metro + taxi) per the locked spec. The GD weigh-in is the substrate; no further academic dispatches needed for PR8.
-2. **Codification work** (ADR-003 extension + AGENTS.md §9.3 plaque-rule) can ship in the same PR as PR8 OR as a separate small docs commit before FD dispatches — owner picks.
+**All 4 picks locked 2026-05-06 (owner accepted GD's recommendations as-is):**
+1. **Hours: 06:00–22:00** (`{ ranges: [{ open: 360, close: 1320 }] }`)
+2. **POI type: new `square`** (English string, not `praça`)
+3. **Description: Historian Candidate B** (*"Largo do Carmo — plane trees, a Pombaline fountain, and a Gothic church that's been roofless since All Saints' Day 1755. The barracks across the square is a working GNR post; the carnations on the gate are usually fresher than they should be."*)
+4. **§15 ADR trigger: hold "before Belém"** + M3 personal-historical clarification
+
+**Codification landed in the same docs commit:**
+- `DECISIONS.md` ADR-003 extended with "Performer / repertoire conventions" amendment (no-fado-in-busking rule for Lisbon; per-culture-row framework for future cities).
+- `AGENTS.md` §9.3 extended with plaque-text verification rule (prevents invented monuments, e.g., the non-existent Salgueiro Maia statue).
+- `AGENTS.md` §15 extended with colonial-legacy ADR trigger clarification (hold "before Belém" + M3 personal-historical exception).
+
+**Next: dispatch FD for PR8.**
+
+The substrate is in place. FD prompt will reference: `research/lisbon/largo-do-carmo/` (synthesis README + 4 verbatim agent reports), the locked specs above, and the existing PR7 patterns (`startTimedAdvance` from PR6, `LingerVerb` route + payout fields from PR7's Mercado da Ribeira hand-off). Paid-transit (metro + taxi) ships in the same PR per ADR-007. PR8 description tuning note: render description once at peek-snap on first tap of a session; subsequent same-session taps skip to the linger-verb. M4 journal handles re-encounter.
 
 **Paid-transit calibration (still from ADR-007, unchanged by PR8 discovery):**
 - Metro: ~3s real / 20 game-min / €1.80 / rest-neutral

@@ -96,9 +96,20 @@ Practical mapping at M1 (Lisbon):
 - **Per-city extension:** When M2+ adds Tokyo and Marrakech, the policy applies in that culture's conventions. The Anthropologist owns the per-culture naming style.
 - **Documented exception path:** If a future PR proposes a real lodging name (Pensão Londres, Hotel Avenida Palace, etc.), the proposer should: (a) demonstrate the building's cultural-landmark status with sources from that culture; (b) get Anthropologist + Historian sign-off; (c) update this ADR with the precedent. Don't carve exceptions silently.
 
----
+### Amendment 2026-05-06: Performer / repertoire conventions (per-culture)
 
-## ADR-004: JS bundle budget reframed per route class
+Game Designer extension following the M2 PR8 Anthropologist discovery (`research/lisbon/largo-do-carmo/anthropologist-2026-05-05.md` Topic B). Same shape as the lodging-naming default: a per-culture rule that prevents stereotype-trap defaults across multiple Narrative Designer dispatches.
+
+**Default rule:** **The player's busking / performance repertoire is deliberately unspecified.** The linger-verb language (e.g., *"Play for spare change"*) does not name a genre or instrument. Future Narrative Designer dispatches that surface in-game performances (busker NPCs, casas-de-fado venues, café-music POIs) follow per-culture stereotype-trap rules below. Adding a culture row to this amendment is the path when a new city's performer conventions surface.
+
+**Lisbon (PT):**
+- **No fado in busking.** Fado is *not* a busker's idiom in central Lisbon; it lives in the *casas de fado* (Alfama, Mouraria, Bairro Alto sit-down dinner venues) and at organized public events (the *Fado in the Castle* summer festival). A foreign-backpacker player or a fictional Lisboeta NPC "performing fado" at Largo do Carmo / Praça do Rossio / any open-air square would be culturally clumsy at best, appropriative at worst.
+- **Real busker cohorts to honor (per Anthropologist Topic B):** classical guitar + voice (Portuguese, the largest cohort, repertoire spans Zeca Afonso, José Afonso, Sérgio Godinho, Madredeus); solo accordion (older men, pre-Salazar-era folk); Cape Verdean *cavaquinho* + voice or Cape Verdean percussion (mornas, coladeras — the M1 PR1 Africanness flag surfaces here); Brazilian-Portuguese (bossa nova, MPB — distinct register from Portuguese; do NOT conflate).
+- **Casas-de-fado as a separate future POI dispatch.** When a Lisbon fado venue lands, the dispatch is its own Anthropologist + Narrative Designer review, not a busking variant.
+
+**Tokyo / Marrakech / Stockholm / future cities:** TBD. Add a row when an Anthropologist dispatch surfaces the per-culture performer conventions for that city.
+
+**Defense surface:** the linger-verb and success-message register at any performance-coded POI. M3+ Narrative Designer dispatches must read this amendment before writing performance dialogue.
 
 Date: 2026-05-03
 Status: Accepted (owner sign-off 2026-05-03)

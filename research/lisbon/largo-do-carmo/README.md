@@ -2,7 +2,7 @@
 topic: largo-do-carmo
 city: lisbon
 milestone: M2 PR8
-status: discovery-complete (2026-05-05); GD weigh-in landed (2026-05-06); 4 owner picks before FD dispatch
+status: discovery + GD weigh-in complete; all 4 picks locked 2026-05-06 (owner accepted GD's recommendations as-is); FD dispatch ready
 date-opened: 2026-05-05
 related-adrs: [ADR-007 (economy calibration), ADR-008 (rested-ness), ADR-009 (mini-game failure semantics generalize), ADR-010 (POI availability)]
 related-prior-work: [research/lisbon/poi-content-m1/README.md, research/lisbon/azulejo-mini-game/]
@@ -46,11 +46,27 @@ Three explicit no-go visual / textual treatments, distilled from the Anthropolog
 - **No "faded grandeur" / "melancholy beauty" / "decadent charm" / "saudade-untranslatable" vocabulary.** The description uses *small, ringed, Pombaline, roofless, fresher than they should be* — concrete and physical, not romantic.
 - **No editorializing the carnations.** The description names them (per Candidate B); it does NOT explain them. The 1974 layer lives in M3 NPC dialogue and M4 journal-note; the description lets the player notice, not be told.
 
-## Open questions for owner (4 picks before FD dispatch)
+## All 4 picks locked 2026-05-06
 
-The discovery is complete and landed four owner-decision points where the agents either disagreed or gave options. **The Game Designer weighed in 2026-05-06** with team-lead votes from the player-experience + balance + safety-net seat (full report at [game-designer-2026-05-06.md](./game-designer-2026-05-06.md)). The owner makes the final picks; the GD's votes are recorded inline below alongside the academic recommendations.
+Owner accepted GD's recommendations as-is. The picks below are FD's substrate.
 
-**GD's priority reordering** (worth noting before reading the picks): from the team-lead seat the player-experience priority is **Hours > Description > ADR > Type**, not the README's original 1-4 ordering. The hours pick is load-bearing for §5.2 safety-net; everything else is texture, schema hygiene, or roadmap process.
+| # | Pick | LOCKED | Source |
+|---|---|---|---|
+| 1 | **Open hours** | **`{ ranges: [{ open: 360, close: 1320 }] }`** (06:00–22:00) | GD vote (§5.2 safety-net trumps cultural-authenticity precision) |
+| 2 | **POI type** | **new `square` type** (English string, not `praça`) | GD vote (mechanic-gating discipline; reusing `view` would break Miradouro) |
+| 3 | **Description** | **Historian Candidate B**: *"Largo do Carmo — plane trees, a Pombaline fountain, and a Gothic church that's been roofless since All Saints' Day 1755. The barracks across the square is a working GNR post; the carnations on the gate are usually fresher than they should be."* | GD vote (re-readability on visit 5; "All Saints' Day" is Lisboeta-register vs "earthquake" Wikipedia-register) |
+| 4 | **§15 ADR trigger** | **Hold "before Belém"** + clarification: M3 personal-historical dialogue may proceed without ADR; empire-structural framing triggers it | GD vote (ADR's substantive territory is 15th–16th c. maritime expansion, not personal decolonization) |
+
+**FD tuning note from GD on Pick 3:** render the description **once at peek-snap on first tap of a session**; subsequent same-session taps go straight to the linger-verb action. Preserves the "discoverable on visit 1, invisible on visit 5" contract. M4 journal handles re-encounter.
+
+**Codification work landed alongside the lock (2026-05-06):**
+- `DECISIONS.md` ADR-003 extended with the **"Performer / repertoire conventions" amendment** (no-fado-in-busking rule for Lisbon; framework for adding rows per future city).
+- `AGENTS.md` §9.3 extended with the **plaque-text verification rule** (prevents invented monuments — there is no standalone Salgueiro Maia statue at Largo do Carmo).
+- `AGENTS.md` §15 extended with the **colonial-legacy ADR trigger clarification** (hold "before Belém" + M3 personal-historical exception).
+
+## Pick reasoning preserved (as the GD weighed them)
+
+The detailed pick-by-pick reasoning lives in `game-designer-2026-05-06.md`; the academic agents' competing recommendations live in their respective verbatim files. Below is the historical record of how each pick was decided, in case future maintainers ask "why did we pick X."
 
 ### 1. Open-hours window: 06:00–22:00 vs 10:00–22:00
 
