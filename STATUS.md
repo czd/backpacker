@@ -74,9 +74,24 @@ The FD flagged three followup items in their report; carrying forward:
 - **Elevador de Santa Justa as future M3+ POI candidate** — strong case (iconic 1900–1902 iron lattice, Mesnier de Ponsard not Eiffel-apprentice).
 - **Plaque-text verification flag for FD** — both agents flagged: do NOT quote plaque text without Mapillary/Wikimedia verification. No standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one.
 
+**Game Designer weigh-in landed 2026-05-06.** Verbatim at `research/lisbon/largo-do-carmo/game-designer-2026-05-06.md`. GD is opinionated; the votes (in their team-lead-priority order Hours > Description > ADR > Type):
+
+- **Pick 1 — Hours: 06:00–22:00** (Geographer's pick). §5.2 safety-net contract trumps cultural-authenticity precision when they conflict. The 60% increase in "the game is making me wait" felt-time at 10:00 is a real cost for the brokenest-of-broke player at 23:30. Lisboeta cohort-rhythm lands at M3 in the busker NPC's presence-window (Anthropologist already proposed 11:00–20:00 for the NPC), not in a hard verb gate.
+- **Pick 3 — Description: Historian Candidate B.** Re-readability on visit 5 is the deciding lens. *"All Saints' Day 1755"* + *"fresher than they should be"* both load with each visit; Anthropologist Draft 1 reads cleanly visit 1 but as inventory by visit 5. Plus FD tuning note: render description once at peek-snap on first tap of a session, subsequent same-session taps skip to the linger verb.
+- **Pick 4 — §15 ADR: hold "before Belém"** (Historian's pick) + add a one-line clarification: M3 dispatches that touch decolonization personally proceed without the ADR; M3 dispatches that require empire-structural framing trigger the write-up.
+- **Pick 2 — POI type: new `square` type.** The deciding argument is mechanic-gating, not future-pattern leverage. `linger-verbs.ts`'s `switch (poi.type)` is the load-bearing pattern; reusing `view` would mean Miradouro de Santa Catarina inherits busking — which Anthropologist Topic A explicitly rejects. Use English string `"square"` (not `"praça"`) per the cross-cultural convention `"market"` and `"view"` already follow.
+
+**GD also validated Anthropologist's locked economic numbers:** payout band €1.50–€3.00 random across 7 values (confirm + flag grind risk for owner playtest); no-€0 outcomes (agree, €1.50 floor IS the §5.2 contract); random vs flat (random; mirrors ADR-008 internal-continuous/external-discrete pattern); 0.02 rested drain (confirm).
+
+**GD process / codification recommendations (outside PR8 scope, before M3 dispatches):**
+- **Codify no-fado-in-busking rule as an extension to ADR-003** (already governs naming/cultural conventions). Load-bearing across multiple future Narrative Designer dispatches; should not live only in `research/`.
+- **Add plaque-text verification rule to AGENTS.md §9.3:** *"Plaque text and inscription quotes must be verified against current Mapillary or Wikimedia photos before merge."* Prevents invented monuments (notably: there is no standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one).
+
+**GD playtest goal flagged for M2 close-out:** the **PR7→PR8 narrative arc is the project's first playtestable demonstration of pillar #4** ("learning is a side effect of presence") at full power. Player who completes the azulejo mini-game (Estado Novo's azulejo-as-nationalism program at the 1942 airport terminal) AND visits Largo do Carmo (where the regime fell at 17:30 on 25 April 1974) has a coherent picture of "the regime that ran Portugal until 1974" without ever being lectured. Real-phone playtest after PR8 ships.
+
 **Dispatch order after owner picks:**
-1. **Game Designer review** — confirm the 4 calibration picks against the M2 brainstorm's economic-gradient assumptions (€2.20 mean busking payout vs €15 mini-game vs €18 hostel — does this hold?).
-2. **Frontend Developer dispatch** — implement Largo do Carmo seed + busking linger-verb + paid-transit (metro + taxi) per the locked spec.
+1. **Frontend Developer dispatch** — implement Largo do Carmo seed + busking linger-verb + paid-transit (metro + taxi) per the locked spec. The GD weigh-in is the substrate; no further academic dispatches needed for PR8.
+2. **Codification work** (ADR-003 extension + AGENTS.md §9.3 plaque-rule) can ship in the same PR as PR8 OR as a separate small docs commit before FD dispatches — owner picks.
 
 **Paid-transit calibration (still from ADR-007, unchanged by PR8 discovery):**
 - Metro: ~3s real / 20 game-min / €1.80 / rest-neutral

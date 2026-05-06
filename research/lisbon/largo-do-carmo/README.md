@@ -2,7 +2,7 @@
 topic: largo-do-carmo
 city: lisbon
 milestone: M2 PR8
-status: discovery-complete (2026-05-05); 4 owner-pick decisions before GD review + FD dispatch
+status: discovery-complete (2026-05-05); GD weigh-in landed (2026-05-06); 4 owner picks before FD dispatch
 date-opened: 2026-05-05
 related-adrs: [ADR-007 (economy calibration), ADR-008 (rested-ness), ADR-009 (mini-game failure semantics generalize), ADR-010 (POI availability)]
 related-prior-work: [research/lisbon/poi-content-m1/README.md, research/lisbon/azulejo-mini-game/]
@@ -46,9 +46,11 @@ Three explicit no-go visual / textual treatments, distilled from the Anthropolog
 - **No "faded grandeur" / "melancholy beauty" / "decadent charm" / "saudade-untranslatable" vocabulary.** The description uses *small, ringed, Pombaline, roofless, fresher than they should be* — concrete and physical, not romantic.
 - **No editorializing the carnations.** The description names them (per Candidate B); it does NOT explain them. The 1974 layer lives in M3 NPC dialogue and M4 journal-note; the description lets the player notice, not be told.
 
-## Open questions for owner (4 picks before GD review + FD dispatch)
+## Open questions for owner (4 picks before FD dispatch)
 
-The discovery is complete but lands four owner-decision points where the agents either disagreed or gave options. **Owner picks before GD review.**
+The discovery is complete and landed four owner-decision points where the agents either disagreed or gave options. **The Game Designer weighed in 2026-05-06** with team-lead votes from the player-experience + balance + safety-net seat (full report at [game-designer-2026-05-06.md](./game-designer-2026-05-06.md)). The owner makes the final picks; the GD's votes are recorded inline below alongside the academic recommendations.
+
+**GD's priority reordering** (worth noting before reading the picks): from the team-lead seat the player-experience priority is **Hours > Description > ADR > Type**, not the README's original 1-4 ordering. The hours pick is load-bearing for §5.2 safety-net; everything else is texture, schema hygiene, or roadmap process.
 
 ### 1. Open-hours window: 06:00–22:00 vs 10:00–22:00
 
@@ -59,6 +61,8 @@ The discovery is complete but lands four owner-decision points where the agents 
 
 **Recommendation:** Anthropologist's pick (10:00–22:00) is more culturally authentic; Geographer's pick (06:00–22:00) is more permissive and has existing test coverage. Owner picks. Both shapes are one-line config changes.
 
+**🎯 GD vote: 06:00–22:00.** *§5.2 safety-net contract trumps cultural-authenticity precision when they conflict. Brokenest-of-broke at 23:30 means lingering at a free POI to advance time; 10:00 makes that wait 60% longer (10.5 game-hours vs 6.5). Cultural-authenticity loss is invisible to ~100% of players; safety-net loss is felt by the worst-off precisely when the game most needs to feel kind. The Lisboeta cohort-rhythm lands at M3 in the busker NPC's presence-window (Anthropologist already proposed 11:00–20:00 for the NPC — the gap between the verb's 06:00–22:00 and the NPC's 11:00–20:00 is where the cultural-authenticity texture goes, in dialogue presence not in a hard gate.)*
+
 ### 2. POI type: new `square` type vs reuse `view`
 
 | Option | Source | Reasoning |
@@ -67,6 +71,8 @@ The discovery is complete but lands four owner-decision points where the agents 
 | **B — Reuse `view`** | Geographer (fallback) | Closest existing fit. Avoids schema bloat for one POI. The description prose carries the rest. |
 
 **Recommendation:** new `square` type. Both Anthropologist and Geographer prefer it; the future-pattern argument (every city has plazas) is the same shape as PR7's `<MiniGameShell />` future-pattern and the `square` type would inherit cleanly. **Avoid `sight` for register reasons.**
+
+**🎯 GD vote: new `square` type.** *The deciding argument is mechanic-gating, not future-pattern leverage. `linger-verbs.ts`'s `switch (poi.type)` is the load-bearing pattern; reusing `view` for Largo do Carmo would mean every `view` POI inherits busking — Miradouro de Santa Catarina would suddenly offer it, which the Anthropologist explicitly rejects (Topic A). The cleaner option is the new type. Use the English string `"square"` (not `"praça"`) to match the cross-cultural convention `"market"` and `"view"` already follow.*
 
 ### 3. Description: Historian Candidate B vs Anthropologist Draft 1 (variants of the same register)
 
@@ -80,6 +86,8 @@ The Historian and Anthropologist independently wrote candidate descriptions; the
 The difference: Anthropologist's Draft 1 lets the carnations be *there* without explaining them (and doesn't date the ruin); Historian's Candidate B names "All Saints' Day 1755" explicitly. Both reach 30–40 words. Historian argues "All Saints' Day" is *more* evocative than "earthquake" because the religious context is what made the death toll's geography. Anthropologist argues the carnations should be discoverable, not exposited — and would extend that to the 1755 date by implication.
 
 **Recommendation:** Historian Candidate B is slightly more concrete (names a date) and slightly less reserved; Anthropologist Draft 1 trusts the player more. **This is a judgment call the owner makes** — both are cozy, both are anti-trivia, both honor the §9.3 cultural-authenticity discipline. Pick by which voice feels more "Lisboeta as the world's narrator." Either way, the M3 NPC dialogue carries the deeper history.
+
+**🎯 GD vote: Historian Candidate B.** *Re-readability is the deciding lens. PR8's busking POI is the §5.2 safety-net — broke players will tap it many times. Anthropologist Draft 1 reads cleanly on visit 1 but as inventory by visit 5 (the carnations are flower decor on an authority's gate, no weight). Historian Candidate B has two anchors that **load** with each visit: "All Saints' Day 1755" rewards investigation without requiring it; "fresher than they should be" is the literary tell that holds up. "All Saints' Day" is Lisboeta-register vs "earthquake" which is Wikipedia-register — the cultural register pays off the §3 anti-trivia + §4 learning-as-side-effect pillars together. **One FD tuning note:** render the description once at peek-snap on first tap of a session; subsequent same-session taps go straight to the linger-verb. Preserves "discoverable on visit 1, invisible on visit 5."*
 
 ### 4. Colonial-legacy ADR (AGENTS.md §15) trigger: hold "before Belém" vs advance to "before M3"
 
@@ -95,6 +103,28 @@ Both agents agree PR8 itself ships without the ADR. The disagreement is on **whe
 **Recommendation:** Anthropologist's case is stronger if M3 surfaces the busker NPC who carries the *retornados* / decolonization arc personally. Historian's case is stronger if the ADR's substantive territory is the 15th–16th c. maritime expansion (which Belém commemorates explicitly). The two are not exclusive: the ADR can carry both layers.
 
 **Owner pick:** advance the §15 trigger to "before M3 closes," or hold at "before Belém"? My orchestrator-default (informed by both reports): advance to "before M3 closes" — it gives the project headroom to handle the M3 busker NPC honestly, while still preserving the Belém-trigger as a hard gate. Owner has final call.
+
+**🎯 GD vote: hold "before Belém" + add a one-line clarification.** *The ADR's substantive territory is 15th–16th c. maritime expansion (Padrão dos Descobrimentos, Mosteiro dos Jerónimos register). PR8's decolonization-naming is the **antidote** to that, not its equivalent — advancing the trigger to M3 risks writing the ADR around the wrong center (using the busker NPC as the framing case rather than as a downstream consequence). The cleaner sequencing: PR8 ships without the ADR; M3 dispatches that touch decolonization personally (Anthropologist's Topic F "my grandmother gave a soldier a carnation" beat) may proceed without the ADR; M3 dispatches that require empire-structural framing trigger the ADR write-up. Add this clarification to AGENTS.md §15 as a one-line gate refinement.*
+
+## GD second-order balance flags (validating Anthropologist's locked numbers)
+
+Per the GD's weigh-in, the Anthropologist's locked economic parameters were validated against M2 economy + cozy pillars:
+
+- **Payout band €1.50–€3.00 random across 7 values:** **confirm + flag grind risk for owner playtest.** 8 sessions to earn one hostel night = ~10 real-min of pure-busking. That's grindy at the upper end, but the broke-state should be rare (€25 starting wallet, €15 mini-game). If owner real-phone playtest finds it grindy, nudge band mean upward (e.g., `[180, 200, 220, 250, 270, 300, 330]` → mean €2.50 → 7 sessions/hostel) rather than redesign the loop. The right framing: **busking is the safety net, not the income source** — players doing the wrong loop should be redirected to the mini-game by the soft-refusal pattern.
+- **No-€0 outcomes:** **agree, hold floor at €1.50.** ADR-009 generalizes "no permanent fail" to all paid activities; busking is paid, so €0 is a punish-by-time. The €1.50 floor IS the §5.2 safety-net contract; don't lower.
+- **Random vs flat payout:** **random, as proposed.** Mirrors ADR-008's "internal continuous, externally three discrete bands" pattern. Flat €2 would fail the three-band success-message register entirely.
+- **Rested drain 0.02 per session:** **confirm.** 50 sessions to drain rested fully; at 8/hostel the player rests well before exhaustion. Mini-game's 0.05 drain vs 0.02 busking reads as "busking is gentler on the body" — the right register.
+
+## GD process / codification recommendations
+
+The GD also surfaced two cross-cutting items that should land **outside** PR8 scope but **before** M3 dispatches start:
+
+1. **Codify the no-fado-in-busking rule as an extension to ADR-003** (which already governs naming/cultural conventions). Discipline already exists; we're adding a per-culture row. Load-bearing across multiple future Narrative Designer dispatches; should not live only in `research/`.
+2. **Add plaque-text verification rule to AGENTS.md §9.3** (or §12.3 cultural-content review hook): *"Plaque text and inscription quotes must be verified against current Mapillary or Wikimedia photos before merge."* Prevents invented monuments (notably: there is **no** standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one). Cheap to write; protects across multiple agents.
+
+## GD playtest goal flagged for M2 close-out
+
+The PR7→PR8 narrative arc is the project's first playtestable demonstration of pillar #4 ("learning is a side effect of presence") at full power: a player who completes the azulejo mini-game (which surfaces Estado Novo's azulejo-as-nationalism program at the 1942 airport terminal) AND visits Largo do Carmo (where the regime fell at 17:30 on 25 April 1974) has a coherent picture of "the regime that ran Portugal until 1974" without ever being lectured. **Real-phone playtest after PR8 ships:** does the arc land for a fresh player? If yes, the project just demonstrated its core design thesis with two POIs.
 
 ## Cross-cutting flags surfaced by this discovery
 
@@ -119,3 +149,4 @@ See [bibliography.md](./bibliography.md) for the full citation list including Po
 - [anthropologist-2026-05-05.md](./anthropologist-2026-05-05.md) — POI verdict (keep Carmo + reasoning); Lisboeta busking conventions (where, when, who); payout language + register; the 25 de Abril cultural weight; stereotype audit; Cape Verdean Lisboeta NPC scaffolding; colonial-legacy ADR position (advance trigger).
 - [historian-2026-05-05.md](./historian-2026-05-05.md) — 1755 earthquake substrate (date, magnitude, Convento do Carmo specifics); 1974 Carnation Revolution play-by-play (MFA, Salgueiro Maia, Caetano's surrender, Celeste Caeiro); dual-layer description framing (3 candidates); period detail / signage / material culture; colonial-legacy ADR position (hold trigger); POI alternatives audit.
 - [geographer-2026-05-05.md](./geographer-2026-05-05.md) — coordinate verification (38.71182, -9.14055); spatial fit with M1 cluster (centroid pivot, 240m hostel-Carmo borderline, no cluster expansion); topographic realism (45m climb, elevador as implicit infrastructure); POI type recommendation (`square`); open-hours geography; temporal-arc fit (1389+1755+1974 closes three gaps); FD cross-cutting flags.
+- [game-designer-2026-05-06.md](./game-designer-2026-05-06.md) — team-lead weigh-in on the 4 owner picks from the player-experience + balancing seat; second-order balance validations (payout band, €1.50 floor, random-vs-flat, rested drain); cross-cutting deferred-item dispositions (elevation factor, hillshade, Elevador as M3+ POI, no-fado rule codification, plaque-text verification); risks + surprises; one-paragraph recommendation to owner.
