@@ -155,7 +155,7 @@ test.describe("/lisbon/jobs/azulejo — M2 PR7 azulejo mini-game", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Tap mercado marker → travel → drawer shows the verb.
     const avatar = page.getByTestId("avatar-marker");

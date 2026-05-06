@@ -25,7 +25,7 @@ test.describe("/lisbon — M2 PR5 HUD top bar", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     const wallet = page.getByTestId("wallet-chip");
     await expect(wallet).toBeVisible();
@@ -43,7 +43,7 @@ test.describe("/lisbon — M2 PR5 HUD top bar", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     const wallet = page.getByTestId("wallet-chip");
     await expect(wallet).toHaveAttribute("data-cents", "2500");
@@ -90,7 +90,7 @@ test.describe("/lisbon — M2 PR5 HUD top bar", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     await expect(page.getByTestId("tired-chip")).toHaveCount(0);
     // Wallet + clock are both visible.
@@ -107,7 +107,7 @@ test.describe("/lisbon — M2 PR5 HUD top bar", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     await expect(page.getByTestId("tired-chip")).toHaveCount(0);
 
@@ -132,7 +132,7 @@ test.describe("/lisbon — M2 PR5 HUD top bar", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     await page.evaluate(() => {
       const w = window as Window &
@@ -166,7 +166,7 @@ test.describe("/lisbon — M2 PR5 HUD top bar", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Travel airport → hostel first (so the linger button reads).
     const avatar = page.getByTestId("avatar-marker");

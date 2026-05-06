@@ -122,7 +122,7 @@ test.describe("/lisbon", () => {
     // `toHaveCount` polls until the assertion holds, which is the right
     // shape for a realtime query.
     const markers = page.locator('[data-testid^="poi-marker-"]');
-    await expect(markers).toHaveCount(5);
+    await expect(markers).toHaveCount(6);
   });
 
   test("each POI marker is at least 44×44px (§6.2 touch floor)", async ({
@@ -130,12 +130,13 @@ test.describe("/lisbon", () => {
   }) => {
     await page.goto("/lisbon");
     const markers = page.locator('[data-testid^="poi-marker-"]');
-    // Wait for all 5 markers to mount before measuring — under parallel
-    // test load the realtime query can resolve a beat after the dev
-    // poi-count affordance renders.
-    await expect(markers).toHaveCount(5);
+    // Wait for all 6 markers to mount before measuring (5 from M1 +
+    // Largo do Carmo from M2 PR8) — under parallel test load the
+    // realtime query can resolve a beat after the dev poi-count
+    // affordance renders.
+    await expect(markers).toHaveCount(6);
     const count = await markers.count();
-    expect(count).toBe(5);
+    expect(count).toBe(6);
     // Markers mount with a per-index 80ms stagger and a ~250ms spring; the
     // §6.2 44pt floor is the *resting* size. Pre-settle, the springs pass
     // through scale < 1 and a transient measurement would (correctly)
@@ -173,7 +174,7 @@ test.describe("/lisbon", () => {
     // Wait for markers to mount over the realtime query.
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     // Tap the Castelo de São Jorge marker (sight type, one of the seed POIs).
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await expect(castelo).toBeVisible();
@@ -196,7 +197,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await castelo.click();
     const drawerBody = page.getByTestId("poi-drawer-body");
@@ -240,7 +241,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const avatar = page.getByTestId("avatar-marker");
     await expect(avatar).toHaveAttribute("data-traveling", "false");
 
@@ -270,7 +271,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const avatar = page.getByTestId("avatar-marker");
     await expect(avatar).toHaveAttribute("data-traveling", "false");
 
@@ -345,7 +346,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const list = page.getByRole("list", { name: "Places of interest" });
     await list
       .locator("button")
@@ -362,7 +363,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await castelo.click();
 
@@ -392,7 +393,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await castelo.click();
     await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
@@ -417,7 +418,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // We can't easily query MapLibre layers via Playwright selectors,
     // but the trail's GeoJSON Source/Layer renders into a child of
@@ -496,7 +497,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const avatar = page.getByTestId("avatar-marker");
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
 
@@ -569,7 +570,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     await page.getByTestId("poi-marker-castelo-de-sao-jorge").click();
     await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
 
@@ -599,7 +600,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     const recenter = page.getByTestId("recenter-button");
     await expect(recenter).toBeVisible();
@@ -675,7 +676,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const recenter = page.getByTestId("recenter-button");
     await expect(recenter).toBeVisible();
 
@@ -726,7 +727,7 @@ test.describe("/lisbon", () => {
     // has fired.
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     // Allow the fit-bounds + first paint to settle.
     await page.waitForTimeout(300);
 
@@ -780,7 +781,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     // The list is `sr-only` (Tailwind's screen-reader-only utility:
     // visually hidden but in the accessibility tree). We query by ARIA
     // label, not visibility. Playwright's getByRole respects the
@@ -788,7 +789,7 @@ test.describe("/lisbon", () => {
     const list = page.getByRole("list", { name: "Places of interest" });
     await expect(list).toHaveCount(1);
     const items = list.locator("button");
-    await expect(items).toHaveCount(5);
+    await expect(items).toHaveCount(6);
     // Activating an sr-only list item opens the same drawer as a marker tap.
     // This is the keyboard-only / screen-reader path through §6.8. We use
     // `dispatchEvent('click')` rather than `click()` because Playwright's
@@ -840,7 +841,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const clock = page.getByTestId("time-of-day-clock");
     await expect(clock).toHaveText(/14:30 · day 1/);
 
@@ -912,7 +913,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     const avatar = page.getByTestId("avatar-marker");
     const miradouro = page.getByTestId(
@@ -979,7 +980,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Force the clock to night phase via the page console. The store
     // is a CommonJS-style ES module imported by the app; we expose it
@@ -1058,7 +1059,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Travel to the hostel.
     const avatar = page.getByTestId("avatar-marker");

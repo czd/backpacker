@@ -30,7 +30,7 @@ test.describe("/lisbon — M2 PR4 hostel sleep", () => {
     // render).
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const wallet = await page.evaluate(() => {
       const w = window as Window &
         typeof globalThis & {
@@ -67,7 +67,7 @@ test.describe("/lisbon — M2 PR4 hostel sleep", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     const avatar = page.getByTestId("avatar-marker");
     const hostel = page.getByTestId("poi-marker-lisbon-baixa-hostel");
@@ -107,7 +107,7 @@ test.describe("/lisbon — M2 PR4 hostel sleep", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Travel airport → hostel.
     const avatar = page.getByTestId("avatar-marker");
@@ -197,7 +197,7 @@ test.describe("/lisbon — M2 PR4 hostel sleep", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Travel airport → hostel first.
     const avatar = page.getByTestId("avatar-marker");
@@ -252,7 +252,7 @@ test.describe("/lisbon — M2 PR4 hostel sleep", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Sanity: rested baseline is 1.0.
     const restedBefore = await page.evaluate(() => {
