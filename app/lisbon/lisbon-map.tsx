@@ -578,6 +578,15 @@ export function LisbonMap() {
   // closes / a different POI is selected, so a stale message never
   // leaks to a different POI's drawer.
   const [buskingMessage, setBuskingMessage] = useState<string | null>(null);
+
+  // **Generation counter for busking-message timeouts.** Each
+  // session gets a unique id; the post-hold setTimeout closes over
+  // its own id and only clears the message if the counter still
+  // matches. Without this, a fast-tap that started a second session
+  // before the first session's setTimeout fired would have its
+  // message wiped early by the stale timeout. The pattern mirrors
+  // `travelGenRef`'s shape elsewhere in this file.
+  const buskingMessageGenRef = useRef(0);
   const [traveling, setTraveling] = useState(false);
   const [facing, setFacing] = useState(0);
   const [trail, setTrail] = useState<{
@@ -978,7 +987,12 @@ export function LisbonMap() {
       // **M2 PR8: clear any stale busking message** when the player
       // opens a different POI's drawer. A message generated at Largo
       // do Carmo should not flash inside, e.g., the airport's drawer.
+      // Bump the gen counter so any pending setTimeout that would
+      // re-clear (or re-snap) is invalidated — the new POI's drawer
+      // shouldn't have its layout yanked by a stale busking-message
+      // hold expiring.
       setBuskingMessage(null);
+      buskingMessageGenRef.current++;
 
       // **M2 PR8: description-once-per-session.** Snapshot the pre-add
       // answer into a state flag, THEN mutate the ref (synchronously,
@@ -1233,7 +1247,6 @@ export function LisbonMap() {
       //    the inline path is the one with the explicit "no per-
       //    minute drain" property that paid transit needs.
       const start: LngLat = { ...avatar };
-      const distKm = haversineKm(start, destination);
       const bearing = bearingDeg(start, destination);
       const gen = ++travelGenRef.current;
       const isCurrent = () => travelGenRef.current === gen;
@@ -1378,8 +1391,13 @@ export function LisbonMap() {
         usePlayerStore.getState().drainRested(BUSKING_RESTED_DRAIN);
         usePlayerStore.getState().creditWallet(payout);
         setBuskingMessage(message);
+        const gen = ++buskingMessageGenRef.current;
         setTimeout(() => {
-          setBuskingMessage(null);
+          // Only clear if this is still the current session — a
+          // newer busking tap would have bumped the gen counter.
+          if (buskingMessageGenRef.current === gen) {
+            setBuskingMessage(null);
+          }
         }, BUSKING_MESSAGE_HOLD_MS);
         return;
       }
@@ -1418,7 +1436,13 @@ export function LisbonMap() {
           usePlayerStore.getState().creditWallet(payout);
           usePlayerStore.getState().drainRested(BUSKING_RESTED_DRAIN);
           setBuskingMessage(message);
+          const gen = ++buskingMessageGenRef.current;
           setTimeout(() => {
+            // Only clear if this is still the current session.
+            // A fast re-tap during the hold window would have
+            // bumped the gen counter and is responsible for its
+            // own message lifecycle.
+            if (buskingMessageGenRef.current !== gen) return;
             setBuskingMessage(null);
             // Auto-collapse to the half snap so the busking-active
             // pose doesn't linger after the message clears. The
@@ -2014,8 +2038,11 @@ export function LisbonMap() {
             setSelectedPoi(null);
             setActiveSnapPoint(null);
             // **M2 PR8:** clear any stale busking message on close so
-            // the next reopen of any POI starts clean.
+            // the next reopen of any POI starts clean. Bump the gen
+            // counter so a pending message-hold setTimeout doesn't
+            // try to setActiveSnapPoint after the drawer is gone.
             setBuskingMessage(null);
+            buskingMessageGenRef.current++;
           }
         }}
         onSnapChange={handleSnapChange}
