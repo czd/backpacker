@@ -304,6 +304,118 @@ describe("lingerVerbFor — Largo do Carmo busking POI (M2 PR8 hand-off)", () =>
   });
 });
 
+describe("lingerVerbFor — square (M2 PR8 busking verb)", () => {
+  // Per the synthesis README: Largo do Carmo ships as the new
+  // `square` POI type. The verb is the §5.2 safety-net realized.
+  const carmoAvailability = {
+    ranges: [{ open: 360, close: 1320 }], // 06:00–22:00
+  };
+
+  it('square at noon → "Play for spare change", kind: "busking", quantum 30', () => {
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Play for spare change");
+    // 30 game-min per session — matches PR7 mini-game session length.
+    expect(verb.quantum).toBe(30);
+    // The busking kind tag dispatches the busking-specific completion
+    // path in lisbon-map.tsx's handleLinger.
+    expect(verb.kind).toBe("busking");
+  });
+
+  it("square verb has no cost (busking is wallet-independent — §5.2 safety net)", () => {
+    // Critical contract: busking is the safety net. It MUST NOT carry
+    // a cost field; the soft-refusal pattern would otherwise lock
+    // broke players out of their only income source.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.cost).toBeUndefined();
+  });
+
+  it("square verb has no payout suffix (RNG-resolved at completion, not fixed)", () => {
+    // The seven-value band resolves at completion via
+    // pickBuskingPayout. Rendering a fixed " · €N" suffix would be
+    // dishonest about the payout shape. The drawer's PoiDrawerBody
+    // skips the payout suffix branch when verb.kind === "busking".
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.payout).toBeUndefined();
+  });
+
+  it("square verb is NOT a route-based verb (runs the local rAF loop)", () => {
+    // Mini-games (market) take the player to /lisbon/jobs/azulejo;
+    // busking happens in-place at the POI drawer.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.route).toBeUndefined();
+  });
+
+  it("square at 23:00 → closed (past 22:00 close); verb still has no kind tag", () => {
+    // Closed-state for `square` flows through the same closedLabel
+    // path as other POIs. The kind tag is set on enabled verbs only
+    // — a closed busking verb shouldn't read as kind: "busking" to
+    // the drawer (which would fire the busking-specific UI). Quantum
+    // is 0; label includes "closed". This protects the affordance
+    // boundary: a player at 23:30 sees "Closed — come back at 06:00",
+    // not the busking action.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, 23 * 60);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toMatch(/closed/i);
+    expect(verb.quantum).toBe(0);
+    expect(verb.kind).toBeUndefined();
+  });
+
+  it("square at 06:00 → open (first minute, kind tag set)", () => {
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, 360);
+    expect(verb.enabled).toBe(true);
+    expect(verb.kind).toBe("busking");
+  });
+
+  it("square at 04:00 → closed (before 06:00); points at next-open 06:00", () => {
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, 4 * 60);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toContain("06:00");
+  });
+
+  it("square verb wording is locked: 'Play for spare change' (NOT 'Busk for spare change')", () => {
+    // Per ADR-003 amendment + Anthropologist Topic C: 'busk' is an
+    // Anglo verb; 'play' translates cleanly. If a future Narrative
+    // Designer pass touches this string, ADR-003 should be updated
+    // alongside.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.label).toBe("Play for spare change");
+    expect(verb.label).not.toMatch(/^busk/i);
+  });
+});
+
 describe("lingerVerbFor — cost field (M2 PR4 per ADR-007)", () => {
   it("hostel verb carries cost: 1800 (€18) regardless of phase", () => {
     const poi = mockPoi({ type: "hostel", availability: undefined });

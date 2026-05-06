@@ -28,6 +28,10 @@
 
 import type { Doc } from "../../convex/_generated/dataModel";
 import { formatHourMinute, isOpenNow, nextOpenMinute } from "./availability";
+import {
+  BUSKING_SESSION_GAME_MINUTES,
+  BUSKING_VERB_LABEL,
+} from "./busking";
 import { minutesUntilMorning, monthOf } from "./game-clock-store";
 
 export type LingerVerb = {
@@ -97,6 +101,16 @@ export type LingerVerb = {
    * accordingly. Keeps `lingerVerbFor` a pure function of the POI
    * + game-clock state.
    */
+  /**
+   * Optional kind tag for downstream consumers. Most verbs leave this
+   * undefined; the busking verb sets `"busking"` so `lisbon-map.tsx`'s
+   * linger handler can dispatch the busking-specific completion path
+   * (RNG payout, three-band success message, 0.02 rested-drain) rather
+   * than the generic "advance + per-minute drain" path used by transit/
+   * view/sight. Keeps `lingerVerbFor` and `PoiDrawer` decoupled from
+   * the busking implementation.
+   */
+  kind?: "busking";
 };
 
 /**
@@ -224,6 +238,33 @@ export function lingerVerbFor(
         enabled: true,
         payout: 1500,
         route: "/lisbon/jobs/azulejo",
+      };
+    case "square":
+      // **M2 PR8 (per ADR-007 + ADR-008 + ADR-009):** the square's
+      // busking surface. Largo do Carmo is the only `square` POI in
+      // M2; the verb is the §5.2 safety-net realized — broke players
+      // can busk for a small payout, no €0 outcomes, no permanent
+      // fail. Per the synthesis README:
+      //   - Wording: "Play for spare change" (Anthropologist Topic C)
+      //   - Game-time advance: 30 g-min per session (matches PR7's
+      //     mini-game session length)
+      //   - Payout: random draw from the seven-value band per
+      //     `pickBuskingPayout` (mean ~€2.20)
+      //   - Rested drain: 0.02 flat per session (per ADR-008)
+      //   - Available regardless of wallet (this is the safety net;
+      //     do NOT gate on canAfford)
+      //
+      // The `kind: "busking"` tag tells `lisbon-map.tsx` to dispatch
+      // the busking-specific completion path. Quantum is the session
+      // game-minutes; payout is left undefined (the actual payout
+      // is RNG-resolved at completion, not a fixed reward — rendering
+      // a fixed "· €N" suffix would be a lie). The success message
+      // appears inline in the drawer at completion.
+      return {
+        label: BUSKING_VERB_LABEL,
+        quantum: BUSKING_SESSION_GAME_MINUTES,
+        enabled: true,
+        kind: "busking",
       };
     default: {
       // Exhaustiveness check. If a future PR adds a sixth POI type the
