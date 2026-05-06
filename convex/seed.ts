@@ -101,6 +101,44 @@ export const LISBON_POIS = [
       ranges: [{ open: 600, close: 1440 }], // 10:00–24:00
     },
   },
+  {
+    // M2 PR8 — Largo do Carmo (busking POI). All 4 picks locked
+    // 2026-05-06 in research/lisbon/largo-do-carmo/README.md. The
+    // description is Historian Candidate B verbatim; the coordinates
+    // are Geographer-locked (the praça center / Chafariz do Carmo
+    // fountain — anchors both the 1389/1755 layer and the 1974
+    // layer without privileging either). The 06:00–22:00 availability
+    // is GD-locked over the Anthropologist's 10:00–22:00 (§5.2 safety-
+    // net contract trumps cultural-authenticity precision when in
+    // conflict). The `square` POI type is GD-locked for mechanic-
+    // gating discipline: linger-verbs.ts switches on type, and reusing
+    // `view` would silently make Miradouro de Santa Catarina offer
+    // busking too.
+    //
+    // **Cultural-defense audit (verbatim from synthesis README):**
+    // - No fado wording in any UI string (per ADR-003 amendment 2026-05-06).
+    // - No "faded grandeur" / "melancholy beauty" / "saudade"
+    //   vocabulary in the description.
+    // - Carnations are *named*, not editorialized. The 1974 layer
+    //   lives in M3 NPC dialogue, not in the M2 description.
+    // - No invented monuments. There is no standalone Salgueiro Maia
+    //   statue at Largo do Carmo — only a plaque, which we do NOT
+    //   quote (per AGENTS.md §9.3 plaque-text verification rule).
+    slug: "largo-do-carmo",
+    name: "Largo do Carmo",
+    type: "square" as const,
+    lat: 38.71182,
+    lng: -9.14055,
+    description:
+      "Largo do Carmo — plane trees, a Pombaline fountain, and a Gothic church that's been roofless since All Saints' Day 1755. The barracks across the square is a working GNR post; the carnations on the gate are usually fresher than they should be.",
+    openHours: "Open 06:00–22:00",
+    // Per ADR-010 + the GD vote 2026-05-06: 06:00–22:00 (the busking-
+    // allowed window). The hand-off test in linger-verbs.test.ts already
+    // pins this exact shape.
+    availability: {
+      ranges: [{ open: 360, close: 1320 }], // 06:00–22:00
+    },
+  },
 ];
 
 export const seedLisbon = internalMutation({

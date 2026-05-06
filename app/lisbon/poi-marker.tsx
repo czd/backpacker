@@ -5,6 +5,7 @@ import {
   BedDouble,
   Camera,
   Castle,
+  Music,
   Plane,
   ShoppingBasket,
   type LucideIcon,
@@ -76,7 +77,13 @@ import { cn } from "@/lib/utils";
  * trivially testable in isolation (no MapLibre context required).
  */
 
-export type PoiMarkerType = "hostel" | "transit" | "view" | "sight" | "market";
+export type PoiMarkerType =
+  | "hostel"
+  | "transit"
+  | "view"
+  | "sight"
+  | "market"
+  | "square";
 
 export type PoiMarkerProps = {
   type: PoiMarkerType;
@@ -163,6 +170,24 @@ const TYPE_META: Record<PoiMarkerType, TypeMeta> = {
     ringClass: "ring-[var(--chart-3)]",
     iconClass: "text-[var(--chart-3)]",
     defaultLabel: "Market",
+  },
+  // M2 PR8: `square` (Largo do Carmo). Re-uses `--chart-2` (warm gold,
+  // same family the view marker uses) — squares and viewpoints share
+  // a "public open space" register; the icon (Music, generic
+  // performance/audio glyph) does the per-type discrimination. Chart-2
+  // also reads as "afternoon light in the praça," tonal alignment with
+  // the description's plane-trees-and-fountain register.
+  //
+  // **Cultural-defense note (per ADR-003 amendment 2026-05-06):**
+  // `Music` is the genre-agnostic glyph; we explicitly avoid any
+  // instrument iconography that would imply a specific repertoire
+  // (no fado guitar, no cavaquinho, no accordion). The player's
+  // repertoire is deliberately unspecified.
+  square: {
+    icon: Music,
+    ringClass: "ring-[var(--chart-2)]",
+    iconClass: "text-[var(--chart-2)]",
+    defaultLabel: "Square",
   },
 };
 

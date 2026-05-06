@@ -4,7 +4,23 @@ import { v } from "convex/values";
 // AGENTS.md §7.1: POIs are real places (hostels, markets, transit, sights,
 // views, etc.). Each city ships with at least the per-city checklist in §9.2.
 // The `type` enum starts narrow at M1 — extend as new POI categories arrive.
-export const POI_TYPES = ["hostel", "transit", "view", "sight", "market"] as const;
+//
+// **M2 PR8** introduces the `square` type for *praças/largos* — open
+// public squares that anchor urban life without being a viewpoint or a
+// monument. Per the GD vote (research/lisbon/largo-do-carmo/README.md),
+// reusing `view` for Largo do Carmo would make every miradouro silently
+// inherit the busking linger verb (linger-verbs.ts switches on type),
+// so a new union member is the cleaner option. The English string
+// `"square"` matches the cross-cultural convention `"market"` /
+// `"view"` / `"sight"` already follow (no `"praça"` per ADR-003).
+export const POI_TYPES = [
+  "hostel",
+  "transit",
+  "view",
+  "sight",
+  "market",
+  "square",
+] as const;
 
 export default defineSchema({
   pois: defineTable({
@@ -17,6 +33,7 @@ export default defineSchema({
       v.literal("view"),
       v.literal("sight"),
       v.literal("market"),
+      v.literal("square"),
     ),
     lat: v.number(),          // 5-decimal precision is ample for marker placement
     lng: v.number(),

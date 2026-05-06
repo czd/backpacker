@@ -34,8 +34,10 @@ const LISBON_LNG_MIN = -9.25;
 const LISBON_LNG_MAX = -9.05;
 
 describe("LISBON_POIS seed array", () => {
-  it("has exactly 5 entries (M1 DoD: 5+ POIs)", () => {
-    expect(LISBON_POIS).toHaveLength(5);
+  it("has 6 entries (M1: 5 + M2 PR8 Largo do Carmo)", () => {
+    // M1 PR1 shipped 5 POIs; M2 PR8 added Largo do Carmo (the busking
+    // POI). The §13 M1 DoD floor was "5+ POIs"; PR8 puts us at 6.
+    expect(LISBON_POIS).toHaveLength(6);
   });
 
   it("every POI has all required fields, none of them empty", () => {
@@ -155,6 +157,43 @@ describe("LISBON_POIS availability — M2 PR3 (per ADR-010)", () => {
       | undefined;
     expect(av).toBeDefined();
     expect(av!.ranges).toEqual([{ open: 600, close: 1440 }]);
+  });
+
+  it("largo do carmo has 06:00–22:00 availability (M2 PR8 lock)", () => {
+    // Per the synthesis README + the GD vote 2026-05-06: the busking
+    // POI's window is the brainstorm's 06:00–22:00 (1320 minutes) —
+    // the §5.2 safety-net contract trumps the Anthropologist's
+    // narrower 10:00–22:00 cultural-authenticity preference.
+    const poi = bySlug("largo-do-carmo");
+    expect(poi).toBeDefined();
+    expect(poi!.type).toBe("square");
+    const av = (poi as Record<string, unknown>).availability as
+      | { ranges: { open: number; close: number }[] }
+      | undefined;
+    expect(av).toBeDefined();
+    expect(av!.ranges).toEqual([{ open: 360, close: 1320 }]);
+  });
+
+  it("largo do carmo description is Historian Candidate B verbatim (no plaque quotes, no fado)", () => {
+    // Per AGENTS.md §9.3 plaque-text rule (added 2026-05-06): no
+    // plaque text directly quoted. Per ADR-003 amendment: no fado
+    // genre-naming in busking-adjacent strings. The locked
+    // description uses neither — this test pins both contracts so a
+    // future copy-tweak doesn't silently regress the cultural-defense
+    // audit.
+    const poi = bySlug("largo-do-carmo");
+    expect(poi).toBeDefined();
+    const desc = poi!.description;
+    expect(desc).toContain("Largo do Carmo");
+    expect(desc).toContain("All Saints' Day 1755");
+    expect(desc).toContain("GNR");
+    expect(desc).toContain("carnations");
+    // No fado / no romanticization vocabulary (synthesis README's
+    // cultural-defense audit).
+    expect(desc.toLowerCase()).not.toContain("fado");
+    expect(desc.toLowerCase()).not.toContain("saudade");
+    expect(desc.toLowerCase()).not.toContain("melancholy");
+    expect(desc.toLowerCase()).not.toContain("faded grandeur");
   });
 
   it("availability open/close values are integer minutes-of-day in [0, 1440]", () => {
