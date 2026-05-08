@@ -109,6 +109,38 @@
 }
 
 :root {
+  /*
+   * Azulejo panel palette — M2 PR7 (per UI Designer 2026-05-04 spec).
+   *
+   * Cross-cutting note: `--azulejo-cobalt` (hue 250) is *distinct* from
+   * the existing `--primary` aged-azulejo-teal (hue 220). The primary
+   * is the project's lead accent (avatar, tired chip glyph); the
+   * azulejo cobalt is the Bernardes-school cobalt that fired into
+   * the *Vida de Santa Clara* upper-cloister panels c. 1700–1710.
+   * Future M3+ work (NPC dialogue, journal Notes) might want to
+   * bridge the two tokens; for M2 PR7 they stay distinct.
+   *
+   * The polychrome palette is the load-bearing §9.3 line. Anti-cliché
+   * defenses preserved in token names: antimony-pale (NEVER saffron),
+   * copper-soft (NEVER emerald), manganese (NEVER magenta).
+   *
+   * Light values below; dark counterparts in the dark-theme blocks.
+   */
+  --azulejo-cobalt: oklch(0.42 0.07 250);
+  --azulejo-cobalt-wash: oklch(0.62 0.05 248);
+  --azulejo-cobalt-bleed: oklch(0.52 0.06 250);
+  --azulejo-faianca-white: oklch(0.92 0.022 85);
+  --azulejo-faianca-aged: oklch(0.87 0.028 85);
+  --azulejo-glaze-pool: oklch(0.74 0.025 240);
+  --azulejo-antimony-pale: oklch(0.71 0.075 80);
+  --azulejo-antimony-burnt: oklch(0.55 0.07 75);
+  --azulejo-copper-soft: oklch(0.58 0.04 145);
+  --azulejo-manganese: oklch(0.38 0.04 350);
+  --azulejo-mortar: oklch(0.78 0.025 78);
+  --azulejo-mortar-bed: oklch(0.59 0.03 65);
+  --azulejo-faianca-body: oklch(0.55 0.07 35);
+  --azulejo-salt-bloom: oklch(0.84 0.025 78);
+
   /* Cozy palette: warm-neutral hue family ~75-85deg (paper/parchment) with */
   /* a muted aged-azulejo teal (~220deg) primary — Lisbon tile on old paper. */
   --background: oklch(0.972 0.013 85);
@@ -154,6 +186,26 @@
  */
 @media (prefers-color-scheme: dark) {
   :root {
+    /* Azulejo palette dark counterparts — cobalt lifts to read against
+     * dark background; cream darkens slightly but stays warm, never
+     * pure dark gray. The polychrome palette inverts the same way:
+     * decorative pigments stay legible while contrast against the
+     * panel ground inverts. Per UI Designer Topic 1 dark column. */
+    --azulejo-cobalt: oklch(0.65 0.07 250);
+    --azulejo-cobalt-wash: oklch(0.78 0.05 248);
+    --azulejo-cobalt-bleed: oklch(0.7 0.06 250);
+    --azulejo-faianca-white: oklch(0.86 0.022 85);
+    --azulejo-faianca-aged: oklch(0.78 0.028 85);
+    --azulejo-glaze-pool: oklch(0.55 0.025 240);
+    --azulejo-antimony-pale: oklch(0.55 0.075 80);
+    --azulejo-antimony-burnt: oklch(0.42 0.07 75);
+    --azulejo-copper-soft: oklch(0.45 0.04 145);
+    --azulejo-manganese: oklch(0.28 0.04 350);
+    --azulejo-mortar: oklch(0.55 0.025 78);
+    --azulejo-mortar-bed: oklch(0.42 0.03 65);
+    --azulejo-faianca-body: oklch(0.4 0.07 35);
+    --azulejo-salt-bloom: oklch(0.62 0.025 78);
+
     --background: oklch(0.2 0.018 75);
     --foreground: oklch(0.94 0.015 80);
     --card: oklch(0.235 0.02 75);
@@ -189,6 +241,25 @@
 }
 
 .dark {
+  /* Azulejo palette dark counterparts — same as the
+   * prefers-color-scheme block above; kept in sync so a future
+   * user-facing theme toggle (M5 polish) can opt into dark
+   * regardless of OS preference. */
+  --azulejo-cobalt: oklch(0.65 0.07 250);
+  --azulejo-cobalt-wash: oklch(0.78 0.05 248);
+  --azulejo-cobalt-bleed: oklch(0.7 0.06 250);
+  --azulejo-faianca-white: oklch(0.86 0.022 85);
+  --azulejo-faianca-aged: oklch(0.78 0.028 85);
+  --azulejo-glaze-pool: oklch(0.55 0.025 240);
+  --azulejo-antimony-pale: oklch(0.55 0.075 80);
+  --azulejo-antimony-burnt: oklch(0.42 0.07 75);
+  --azulejo-copper-soft: oklch(0.45 0.04 145);
+  --azulejo-manganese: oklch(0.28 0.04 350);
+  --azulejo-mortar: oklch(0.55 0.025 78);
+  --azulejo-mortar-bed: oklch(0.42 0.03 65);
+  --azulejo-faianca-body: oklch(0.4 0.07 35);
+  --azulejo-salt-bloom: oklch(0.62 0.025 78);
+
   --background: oklch(0.2 0.018 75);
   --foreground: oklch(0.94 0.015 80);
   --card: oklch(0.235 0.02 75);

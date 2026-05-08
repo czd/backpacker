@@ -34,8 +34,10 @@ const LISBON_LNG_MIN = -9.25;
 const LISBON_LNG_MAX = -9.05;
 
 describe("LISBON_POIS seed array", () => {
-  it("has exactly 5 entries (M1 DoD: 5+ POIs)", () => {
-    expect(LISBON_POIS).toHaveLength(5);
+  it("has 6 entries (M1: 5 + M2 PR8 Largo do Carmo)", () => {
+    // M1 PR1 shipped 5 POIs; M2 PR8 added Largo do Carmo (the busking
+    // POI). The §13 M1 DoD floor was "5+ POIs"; PR8 puts us at 6.
+    expect(LISBON_POIS).toHaveLength(6);
   });
 
   it("every POI has all required fields, none of them empty", () => {
@@ -94,5 +96,127 @@ describe("LISBON_POIS seed array", () => {
     const unique = new Set(slugs);
     expect(unique.size, `duplicate slug(s) in LISBON_POIS: ${slugs.join(", ")}`)
       .toBe(slugs.length);
+  });
+});
+
+describe("LISBON_POIS availability — M2 PR3 (per ADR-010)", () => {
+  // The migration table from ADR-010 §"Migration of existing seeded POIs":
+  //   - hostel / transit / view → availability absent (24/7 default)
+  //   - castle  → seasonal Mar–Oct 09:00–21:00 / Nov–Feb 09:00–18:00
+  //   - mercado → 10:00–24:00 base (Thu–Sat extended hours deferred)
+
+  const bySlug = (slug: string) =>
+    LISBON_POIS.find((p) => p.slug === slug);
+
+  it("hostel has no availability (absent = 24/7 default)", () => {
+    const poi = bySlug("lisbon-baixa-hostel");
+    expect(poi).toBeDefined();
+    expect((poi as Record<string, unknown>).availability).toBeUndefined();
+  });
+
+  it("airport has no availability (24/7 transit hub)", () => {
+    const poi = bySlug("lisbon-aeroporto");
+    expect(poi).toBeDefined();
+    expect((poi as Record<string, unknown>).availability).toBeUndefined();
+  });
+
+  it("miradouro has no availability (public space)", () => {
+    const poi = bySlug("miradouro-de-santa-catarina");
+    expect(poi).toBeDefined();
+    expect((poi as Record<string, unknown>).availability).toBeUndefined();
+  });
+
+  it("castle has seasonal availability matching the prose", () => {
+    const poi = bySlug("castelo-de-sao-jorge");
+    expect(poi).toBeDefined();
+    const av = (poi as Record<string, unknown>).availability as
+      | {
+          ranges: { open: number; close: number }[];
+          seasonal?: {
+            startMonth: number;
+            endMonth: number;
+            ranges: { open: number; close: number }[];
+          };
+        }
+      | undefined;
+    expect(av).toBeDefined();
+    // Mar–Oct base: 09:00–21:00 = 540–1260
+    expect(av!.ranges).toEqual([{ open: 540, close: 1260 }]);
+    // Nov–Feb seasonal: 09:00–18:00 = 540–1080. Wraps year (11 > 2).
+    expect(av!.seasonal).toBeDefined();
+    expect(av!.seasonal!.startMonth).toBe(11);
+    expect(av!.seasonal!.endMonth).toBe(2);
+    expect(av!.seasonal!.ranges).toEqual([{ open: 540, close: 1080 }]);
+  });
+
+  it("mercado has base 10:00–24:00 (Thu–Sat extended hours deferred)", () => {
+    const poi = bySlug("mercado-da-ribeira");
+    expect(poi).toBeDefined();
+    const av = (poi as Record<string, unknown>).availability as
+      | { ranges: { open: number; close: number }[] }
+      | undefined;
+    expect(av).toBeDefined();
+    expect(av!.ranges).toEqual([{ open: 600, close: 1440 }]);
+  });
+
+  it("largo do carmo has 06:00–22:00 availability (M2 PR8 lock)", () => {
+    // Per the synthesis README + the GD vote 2026-05-06: the busking
+    // POI's window is the brainstorm's 06:00–22:00 (1320 minutes) —
+    // the §5.2 safety-net contract trumps the Anthropologist's
+    // narrower 10:00–22:00 cultural-authenticity preference.
+    const poi = bySlug("largo-do-carmo");
+    expect(poi).toBeDefined();
+    expect(poi!.type).toBe("square");
+    const av = (poi as Record<string, unknown>).availability as
+      | { ranges: { open: number; close: number }[] }
+      | undefined;
+    expect(av).toBeDefined();
+    expect(av!.ranges).toEqual([{ open: 360, close: 1320 }]);
+  });
+
+  it("largo do carmo description is Historian Candidate B verbatim (no plaque quotes, no fado)", () => {
+    // Per AGENTS.md §9.3 plaque-text rule (added 2026-05-06): no
+    // plaque text directly quoted. Per ADR-003 amendment: no fado
+    // genre-naming in busking-adjacent strings. The locked
+    // description uses neither — this test pins both contracts so a
+    // future copy-tweak doesn't silently regress the cultural-defense
+    // audit.
+    const poi = bySlug("largo-do-carmo");
+    expect(poi).toBeDefined();
+    const desc = poi!.description;
+    expect(desc).toContain("Largo do Carmo");
+    expect(desc).toContain("All Saints' Day 1755");
+    expect(desc).toContain("GNR");
+    expect(desc).toContain("carnations");
+    // No fado / no romanticization vocabulary (synthesis README's
+    // cultural-defense audit).
+    expect(desc.toLowerCase()).not.toContain("fado");
+    expect(desc.toLowerCase()).not.toContain("saudade");
+    expect(desc.toLowerCase()).not.toContain("melancholy");
+    expect(desc.toLowerCase()).not.toContain("faded grandeur");
+  });
+
+  it("availability open/close values are integer minutes-of-day in [0, 1440]", () => {
+    for (const poi of LISBON_POIS) {
+      const av = (poi as Record<string, unknown>).availability as
+        | {
+            ranges: { open: number; close: number }[];
+            seasonal?: { ranges: { open: number; close: number }[] };
+          }
+        | undefined;
+      if (av === undefined) continue;
+      const allRanges = [
+        ...av.ranges,
+        ...(av.seasonal?.ranges ?? []),
+      ];
+      for (const { open, close } of allRanges) {
+        expect(Number.isInteger(open)).toBe(true);
+        expect(Number.isInteger(close)).toBe(true);
+        expect(open).toBeGreaterThanOrEqual(0);
+        expect(open).toBeLessThanOrEqual(1440);
+        expect(close).toBeGreaterThanOrEqual(0);
+        expect(close).toBeLessThanOrEqual(1440);
+      }
+    }
   });
 });

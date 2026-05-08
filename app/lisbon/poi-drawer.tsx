@@ -7,6 +7,7 @@ import {
   Castle,
   Clock,
   Loader2,
+  Music,
   Plane,
   ShoppingBasket,
   type LucideIcon,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 
+import { canAfford, usePlayerStore, wholeEuros } from "./player-store";
 import type { PoiMarkerType } from "./poi-marker";
 
 /**
@@ -187,7 +189,7 @@ export type PoiDrawerProps = {
   onTravel?: () => void;
   /**
    * The linger verb for this POI given the current game-clock state.
-   * Computed by the parent via `lingerVerbFor(poi.type, epochMinute)` —
+   * Computed by the parent via `lingerVerbFor(poi, epochMinute)` —
    * the parent is the one with subscribe-access to the Zustand store, so
    * the drawer stays a pure presentational component (easy to test, easy
    * to render in isolation). When omitted, the linger slot is empty (this
@@ -198,8 +200,32 @@ export type PoiDrawerProps = {
    * verb is `enabled: false` (night closure), the button still renders
    * but is disabled, with the verb's `label` (e.g. "Closed — come back
    * at 09:00").
+   *
+   * **M2 PR4 (per ADR-007):** the verb's optional `cost` (cents) drives
+   * two things: (a) the button label includes the cost when affordable
+   * (e.g. "Sleep until morning · €18"); (b) when the wallet can't
+   * cover the cost, the button is disabled and the label flips to the
+   * soft-refusal "Need €18 — try busking?" form. PR8 wires the
+   * deep-link to the busking POI; PR4 just renders the disabled state.
    */
-  lingerVerb?: { label: string; quantum: number; enabled: boolean };
+  lingerVerb?: {
+    label: string;
+    quantum: number;
+    enabled: boolean;
+    cost?: number;
+    /** M2 PR7: when set, label renders with " · €N" payout suffix
+     * (when affordable / always for routes). Mini-game verbs PAY
+     * rather than charge. */
+    payout?: number;
+    /** M2 PR7: when set, tapping the verb navigates to this route
+     * instead of running the linger rAF loop. */
+    route?: string;
+    /** M2 PR8: when set to "busking", the linger verb runs the
+     * busking-specific completion path (RNG payout + three-band
+     * success message + 0.02 rested drain). The drawer renders an
+     * inline post-completion message instead of any payout suffix. */
+    kind?: "busking";
+  };
   /**
    * Tap handler for the linger button. Fires only when `isAtPoi` is true
    * AND `lingerVerb.enabled` is true. The parent advances the game clock
@@ -215,6 +241,60 @@ export type PoiDrawerProps = {
    * teleportation; the spinner + visible clock ticking is the fix.
    */
   lingering?: boolean;
+  /**
+   * M2 PR8: the most recent busking-session success message. When non-
+   * null AND `lingerVerb.kind === "busking"`, the drawer renders the
+   * message inline below the linger button. Cleared by the parent
+   * after the ~1500ms hold so subsequent taps render a fresh message.
+   * Pure presentational — the drawer doesn't generate the text; per
+   * `buskingMessageForCents` the message is one of three locked
+   * narrator's-voice strings.
+   */
+  buskingMessage?: string | null;
+  /**
+   * M2 PR8: whether to render the description prose. Per the GD's
+   * tuning note (research/lisbon/largo-do-carmo/README.md Pick 3): the
+   * Largo do Carmo description renders **once at peek-snap on first
+   * tap of a session**; subsequent same-session taps go straight to
+   * the linger-verb action area without the description prose.
+   * Defaults to true (preserves M1+ behavior for every other POI).
+   * The aria-label on the description container retains the prose
+   * regardless — accessibility doesn't care about the dramatic beat.
+   */
+  showDescription?: boolean;
+  /**
+   * M2 PR8: the available transit modes for getting to this POI from
+   * the avatar's current position. Per ADR-007's display rules:
+   *   - short hops (≤0.6 km)        → ["walk"]
+   *   - mid distance (0.6–1.0 km)   → ["walk", "metro"]
+   *   - airport-distance (≥1.0 km)  → ["walk", "metro", "taxi"]
+   * Computed by the parent (lisbon-map.tsx) via
+   * `transitModesForLegPoints(avatar, poi)`. When omitted (M1 default),
+   * the drawer renders only the legacy "Travel here" walk button,
+   * preserving the pre-PR8 contract.
+   *
+   * The drawer renders one button per mode; affordability is checked
+   * per-mode against `walletEurosCentsInternal`. Unaffordable buttons
+   * render the soft-refusal "Need €X — try busking?" copy and call
+   * `onSoftRefusal()` instead of `onTransit(mode)` on tap.
+   */
+  transitModes?: ReadonlyArray<"walk" | "metro" | "taxi">;
+  /**
+   * M2 PR8: tap handler for transit modes other than walk. Receives
+   * the mode tag so the parent can dispatch the correct charge +
+   * advance combination. Walk continues to use `onTravel` so the
+   * legacy single-button path is preserved.
+   */
+  onTransit?: (mode: "metro" | "taxi") => void;
+  /**
+   * M2 PR8: tap handler for the soft-refusal deep-link. When a
+   * cost-bearing verb / transit mode renders disabled (wallet too
+   * low), tapping the disabled-but-clickable label fires this callback
+   * instead of the action handler. Parent navigates to the busking
+   * POI (Largo do Carmo). Optional — when omitted, the soft-refusal
+   * label is purely visual and the button is fully disabled.
+   */
+  onSoftRefusal?: () => void;
 };
 
 type TypePillMeta = {
@@ -233,6 +313,10 @@ const TYPE_PILL_META: Record<PoiMarkerType, TypePillMeta> = {
   view: { icon: Camera, label: "Viewpoint" },
   sight: { icon: Castle, label: "Sight" },
   market: { icon: ShoppingBasket, label: "Market" },
+  // M2 PR8: square (Largo do Carmo). Same Music glyph as the marker
+  // (line-stroke family pairing). "Square" reads cleanly cross-
+  // culturally; no `Praça` per ADR-003.
+  square: { icon: Music, label: "Square" },
 };
 
 export function PoiDrawer({
@@ -245,6 +329,11 @@ export function PoiDrawer({
   lingerVerb,
   onLinger,
   lingering = false,
+  buskingMessage = null,
+  showDescription = true,
+  transitModes,
+  onTransit,
+  onSoftRefusal,
 }: PoiDrawerProps) {
   const open = poi !== null;
 
@@ -604,6 +693,11 @@ export function PoiDrawer({
             lingerVerb={lingerVerb}
             onLinger={onLinger}
             lingering={lingering}
+            buskingMessage={buskingMessage}
+            showDescription={showDescription}
+            transitModes={transitModes}
+            onTransit={onTransit}
+            onSoftRefusal={onSoftRefusal}
           />
         ) : null}
       </DrawerContent>
@@ -638,16 +732,109 @@ function PoiDrawerBody({
   lingerVerb,
   onLinger,
   lingering,
+  buskingMessage,
+  showDescription,
+  transitModes,
+  onTransit,
+  onSoftRefusal,
 }: {
   poi: Poi;
   isAtPoi: boolean;
   onTravel?: () => void;
-  lingerVerb?: { label: string; quantum: number; enabled: boolean };
+  lingerVerb?: {
+    label: string;
+    quantum: number;
+    enabled: boolean;
+    cost?: number;
+    /** M2 PR7: when set, label renders with " · €N" payout suffix
+     * (when affordable / always for routes). Mini-game verbs PAY
+     * rather than charge. */
+    payout?: number;
+    /** M2 PR7: when set, tapping the verb navigates to this route
+     * instead of running the linger rAF loop. */
+    route?: string;
+    /** M2 PR8: when "busking", drawer renders the post-completion
+     * success message inline; payout suffix is suppressed. */
+    kind?: "busking";
+  };
   onLinger?: () => void;
   lingering?: boolean;
+  buskingMessage?: string | null;
+  showDescription?: boolean;
+  transitModes?: ReadonlyArray<"walk" | "metro" | "taxi">;
+  onTransit?: (mode: "metro" | "taxi") => void;
+  onSoftRefusal?: () => void;
 }) {
   const meta = TYPE_PILL_META[poi.type];
   const TypeIcon = meta.icon;
+
+  // Wallet subscription (M2 PR4). The drawer reads the wallet to gate
+  // the affordability of cost-bearing linger verbs (the hostel's "Sleep
+  // until morning" at €18 in M2). Subscribing here keeps the drawer's
+  // affordability check in sync with `chargeWallet` / `creditWallet`
+  // mutations from anywhere in the app — when the player buskes a few
+  // €1 sessions back to a positive balance (PR8 future), the hostel
+  // button flips from disabled to enabled without any explicit prop
+  // change. Compute every render; cheap, no memoization.
+  //
+  // **HUD pattern note (PR5 hand-off):** the same `usePlayerStore`
+  // selector pattern works for the HUD's wallet pill — subscribe to
+  // `walletEurosCentsInternal`, render `wholeEuros(cents)` for the
+  // visible Euro number. PR5's HUD slice can mirror this hook line
+  // verbatim.
+  const walletCents = usePlayerStore((s) => s.walletEurosCentsInternal);
+
+  // Affordability + label resolution for cost-bearing linger verbs.
+  // `lingerVerbCost` may be `undefined` (no cost), `0` (treated the
+  // same as undefined for label-rendering — the hostel always has
+  // a positive cost), or a positive integer cents value. We treat
+  // any cost > 0 as "render the cost in the label and check
+  // affordability"; cost === 0 || cost === undefined preserves the
+  // pre-PR4 behavior (verb's plain label).
+  const lingerCost = lingerVerb?.cost ?? 0;
+  const lingerHasCost = lingerCost > 0;
+  const lingerCanAfford = lingerHasCost
+    ? canAfford(walletCents, lingerCost)
+    : true;
+
+  // Payout suffix (M2 PR7). The mini-game verb's `payout` is the €
+  // amount the action *pays* the player on completion — rendered as
+  // " · €15" suffix to telegraph the reward. Unlike `cost`, payout
+  // doesn't gate affordability (the verb pays you, it doesn't cost
+  // you). When both are set, cost takes precedence (the cost-bearing
+  // shape is the soft-refusal seam from ADR-007); in M2 only one
+  // verb sets payout (mini-game) and only one sets cost (hostel),
+  // so the precedence ordering is theoretical.
+  const lingerPayout = lingerVerb?.payout ?? 0;
+  const lingerHasPayout = lingerPayout > 0;
+
+  // Compose the visible button label:
+  //  - cost > 0 + canAfford  → "Sleep until morning · €18"
+  //  - cost > 0 + !canAfford → "Need €18 — try busking?" (soft refusal)
+  //  - payout > 0            → "Restore an azulejo panel · €15" (PR7)
+  //  - cost === 0 / absent   → verb.label verbatim (M1 PR5 behavior)
+  //
+  // **M2 PR8:** the busking verb (kind === "busking") deliberately
+  // skips both the cost AND payout-suffix branches even if the verb
+  // ever set those — busking has no entry cost (it's the safety net),
+  // and the payout is RNG-resolved at completion (rendering a fixed
+  // "· €N" suffix would be a lie). The verb label renders verbatim.
+  //
+  // The soft-refusal copy is from ADR-007 verbatim. PR8 wires the
+  // deep-link from the disabled button to the Largo do Carmo busking
+  // POI; PR4 just renders the disabled state with the right copy.
+  const lingerIsBusking = lingerVerb?.kind === "busking";
+  const lingerButtonLabel = lingerVerb
+    ? lingerIsBusking
+      ? lingerVerb.label
+      : lingerHasCost
+        ? lingerCanAfford
+          ? `${lingerVerb.label} · €${wholeEuros(lingerCost)}`
+          : `Need €${wholeEuros(lingerCost)} — try busking?`
+        : lingerHasPayout
+          ? `${lingerVerb.label} · €${wholeEuros(lingerPayout)}`
+          : lingerVerb.label
+    : "";
 
   // The body is a flex column. DrawerContent is `h-auto max-h-[95svh]`
   // so the box's natural height = sum of content rows. For typical POI
@@ -776,43 +963,72 @@ function PoiDrawerBody({
           `text-base` (16px) is the §6.4 minimum body size; `leading-
           relaxed` (1.625) is the right line-height for cozy paragraph-
           prose. `max-w-prose` caps line length around 65ch. */}
-      <DrawerDescription
-        asChild
-        data-testid="poi-drawer-description"
-      >
-        <div
-          className={cn(
-            "max-h-[42svh] overflow-y-auto touch-pan-y",
-            "max-w-prose text-base leading-relaxed text-foreground",
-            // shadcn's default DrawerDescription is text-sm text-muted-
-            // foreground; we render the description as primary content
-            // here, so override both.
-          )}
-        >
-          {poi.description}
-        </div>
-      </DrawerDescription>
+      {/* M2 PR8: the description is rendered conditionally per the
+          GD's "discoverable on visit 1, invisible on visit 5"
+          tuning rule (research/lisbon/largo-do-carmo/README.md
+          Pick 3). The Largo do Carmo description is shown once at
+          peek-snap on the first session-tap; subsequent same-session
+          taps go straight to the linger-verb action area without the
+          description prose.
 
-      {/* Travel-here / You're-here action button. Pinned at the bottom
-          of the body via the flex column layout; sits below the
-          scrollable description so it's always visible at any snap.
-          Two states:
-            - "Travel here" (default variant) when the avatar is NOT at
-              this POI. Tapping fires `onTravel` (the parent runs the
-              snap-to-peek → fast-travel → snap-back-to-half
-              choreography).
+          The DrawerDescription primitive still renders an
+          aria-describedby-bound element regardless (Vaul wires it via
+          DrawerContent) — we just blank the visible content when
+          showDescription is false. Screen readers still announce the
+          full description from the (visually-hidden but DOM-present)
+          aria-label fallback below. */}
+      {showDescription !== false ? (
+        <DrawerDescription
+          asChild
+          data-testid="poi-drawer-description"
+        >
+          <div
+            className={cn(
+              "max-h-[42svh] overflow-y-auto touch-pan-y",
+              "max-w-prose text-base leading-relaxed text-foreground",
+              // shadcn's default DrawerDescription is text-sm text-muted-
+              // foreground; we render the description as primary content
+              // here, so override both.
+            )}
+          >
+            {poi.description}
+          </div>
+        </DrawerDescription>
+      ) : (
+        // sr-only carrier so the description is still reachable for
+        // screen readers when visually suppressed. Same testid so e2e
+        // can poll on the absence of visible prose without tripping
+        // axe a11y assertions.
+        <DrawerDescription
+          asChild
+          data-testid="poi-drawer-description"
+        >
+          <div
+            className="sr-only"
+            data-description-rendered="false"
+            aria-label={poi.description}
+          >
+            {poi.description}
+          </div>
+        </DrawerDescription>
+      )}
+
+      {/* Travel-here / You're-here action button (walk mode).
+          Per M2 PR8 + ADR-007's display rules: when `transitModes`
+          includes more than just "walk", this button is just the walk
+          row, and metro/taxi rows render below it as siblings (the
+          gradient is preserved by visual stacking — walk first as
+          the cheapest, then metro, then taxi).
+
+          Two base states:
+            - "Travel here" (default variant) when the avatar is NOT
+              at this POI. Tapping fires `onTravel`.
             - "You're here" (outline variant, disabled) when the avatar
-              IS at this POI. Same width so the layout doesn't shift;
-              the variant makes "press me" obviously not the affordance.
-          The button is rendered unconditionally — even without `onTravel`
-          wired (e.g. unit-test render of just the drawer), the button
-          shows. The `disabled` prop covers the "no handler" case so a
-          stray tap is a no-op.
-          `mt-4` carries the inter-row gap that gap-4 would have given
-          us if the column were `gap-4` (we own gaps per-row instead so
-          the description's flex-1 stretches against fixed siblings
-          cleanly). `shrink-0` keeps the button at its natural height
-          even if the column is short on space at small snaps. */}
+              IS at this POI.
+
+          The button is rendered unconditionally — without `onTravel`
+          wired (unit-test render), the button shows but `disabled`
+          covers the "no handler" case. */}
       <Button
         type="button"
         size="lg"
@@ -826,41 +1042,124 @@ function PoiDrawerBody({
         {isAtPoi ? "You're here" : "Travel here"}
       </Button>
 
+      {/* M2 PR8 — paid transit modes (metro, taxi). Rendered as
+          siblings of the walk button below it, in the order
+          `transitModes` provides (walk → metro → taxi). When
+          `transitModes` is omitted (legacy callers, unit tests), only
+          the walk button renders and PR4-PR7 behavior is preserved.
+
+          Per ADR-007: metro/taxi are rest-neutral one-shot synchronous
+          advances; walk drains rested. When the wallet can't cover a
+          mode's cost, the soft-refusal label fires
+          ("Need €X — try busking?") and tapping deep-links to Largo
+          do Carmo (via `onSoftRefusal`).
+
+          When the avatar IS at this POI, the transit buttons disable
+          themselves alongside the You're-here travel button — you
+          can't take the metro to where you already are.
+
+          Order is load-bearing: cheapest first (the walk row above is
+          implicitly first; metro/taxi below in cost order). */}
+      {transitModes && !isAtPoi
+        ? transitModes
+            .filter((m) => m !== "walk")
+            .map((mode) => {
+              const cost = mode === "metro" ? 180 : 1800;
+              const canAffordMode = canAfford(walletCents, cost);
+              const label = canAffordMode
+                ? mode === "metro"
+                  ? "Take the metro · €1.80"
+                  : "Take a taxi · €18"
+                : `Need €${wholeEuros(cost)} — try busking?`;
+              const onTap = canAffordMode
+                ? () => onTransit?.(mode)
+                : onSoftRefusal;
+              return (
+                <Button
+                  key={mode}
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  // Disabled visually when unaffordable AND no soft-
+                  // refusal handler is wired. With `onSoftRefusal`
+                  // present, the button stays clickable so the deep-
+                  // link lands; the visible label tells the player the
+                  // mode is unaffordable.
+                  disabled={
+                    !onTransit ||
+                    (!canAffordMode && !onSoftRefusal)
+                  }
+                  onClick={onTap}
+                  className="mt-2 w-full"
+                  data-testid={`poi-drawer-transit-${mode}`}
+                  data-mode={mode}
+                  data-cost={cost}
+                  data-affordable={canAffordMode ? "true" : "false"}
+                >
+                  {label}
+                </Button>
+              );
+            })
+        : null}
+
       {/* Linger button (M1 PR5). Renders only when the avatar is at this
           POI — you can't linger somewhere you're not. When the verb is
           `enabled: false` (night closure for non-hostel POIs), the
           button is disabled and reads "Closed — come back at 09:00";
-          tapping is a no-op. The hostel always shows "Sleep until
-          morning" and is enabled at any phase (the gentle pressure GD's
-          brainstorm endorsed: the city has a rhythm, and the hostel is
-          the always-available night verb).
+          tapping is a no-op.
 
-          `variant="outline"` matches the "You're here" disabled state
-          family (consistent visual rhythm: the linger slot's affordance
-          weight sits below the primary Travel CTA), but with `enabled`
-          true the button IS interactive — `onLinger` advances the
-          clock. The visible animation of the clock on tap is M5 Whimsy
-          Injector territory; M1 PR5 just dispatches the advance and
-          lets the placeholder clock UI re-render.
+          M2 PR8: when `lingerVerb.kind === "busking"`, the button
+          carries a richer aria-label and tapping always fires
+          `onLinger` (busking is wallet-independent — it's the
+          §5.2 safety net). The cost-affordability gate doesn't apply.
 
-          M1 PR5 is the placeholder-strings slice (per brief). Narrative
-          Designer + Anthropologist polish wording in M3. */}
+          Also M2 PR8: cost-bearing soft-refusal taps deep-link to
+          Largo do Carmo via `onSoftRefusal` rather than being a
+          fully-disabled no-op. */}
       {isAtPoi && lingerVerb ? (
         <Button
           type="button"
           size="lg"
           variant="outline"
+          aria-label={
+            lingerIsBusking
+              ? "Play for spare change to earn money."
+              : undefined
+          }
           // Disabled when the verb is closed (night for non-24h types),
           // when no handler is wired, OR while a linger advance is in
-          // flight — re-tap during the in-flight advance would queue
-          // another and quietly double the time spent.
-          disabled={!lingerVerb.enabled || !onLinger || lingering}
-          onClick={lingerVerb.enabled && !lingering ? onLinger : undefined}
+          // flight. Cost-unaffordable: stays *clickable* if a soft-
+          // refusal handler is wired (deep-links to busking POI);
+          // otherwise disabled (legacy PR4 behavior). Busking verbs
+          // bypass the affordability gate entirely.
+          disabled={
+            !lingerVerb.enabled ||
+            (!lingerIsBusking && !lingerCanAfford && !onSoftRefusal) ||
+            !onLinger ||
+            lingering
+          }
+          onClick={
+            lingerVerb.enabled && !lingering
+              ? lingerIsBusking || lingerCanAfford
+                ? onLinger
+                : onSoftRefusal
+              : undefined
+          }
           className="mt-2 w-full"
           data-testid="poi-drawer-linger-button"
           data-enabled={lingerVerb.enabled}
           data-quantum={lingerVerb.quantum}
           data-lingering={lingering ? "true" : "false"}
+          data-cost={lingerCost}
+          data-affordable={
+            lingerIsBusking ? "true" : lingerCanAfford ? "true" : "false"
+          }
+          // M2 PR8 stable kind tag — e2e tests can target the busking
+          // button via `[data-kind="busking"]` without relying on the
+          // visible label (which is locked to "Play for spare change"
+          // but remains a string the Narrative Designer may polish at
+          // M3).
+          data-kind={lingerVerb.kind ?? "default"}
         >
           {/* Loader2 spinner during linger advance — visible feedback that
               time is passing. The clock chip is also ticking minute-by-
@@ -873,8 +1172,38 @@ function PoiDrawerBody({
               aria-hidden="true"
             />
           ) : null}
-          {lingerVerb.label}
+          {lingerButtonLabel}
         </Button>
+      ) : null}
+
+      {/* M2 PR8 — busking success message. Inline below the linger
+          button. The drawer doesn't generate the text; the parent
+          (lisbon-map.tsx) pipes the locked three-band message via
+          `buskingMessage`. The message holds for ~1500ms then the
+          parent clears the prop, so subsequent taps render a fresh
+          message rather than a stale one.
+
+          `role="status" aria-live="polite"` so a screen reader
+          announces the result without preempting the player's
+          context. The cozy register lives entirely in the message
+          string (per `buskingMessageForCents`); this surface is just
+          the carrier. M5 Whimsy seam: a future polish pass can layer
+          a coin-glint or fade-in/fade-out on this container without
+          touching the contract. */}
+      {buskingMessage && lingerIsBusking ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="poi-drawer-busking-message"
+          className={cn(
+            "mt-3 text-center font-heading text-base leading-snug",
+            "text-foreground",
+            // Soft fade-in. AGENTS.md §6.5: 150ms state-change baseline.
+            "animate-in fade-in-0 duration-200",
+          )}
+        >
+          {buskingMessage}
+        </div>
       ) : null}
     </div>
   );

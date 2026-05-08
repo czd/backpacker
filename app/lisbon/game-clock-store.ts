@@ -30,6 +30,7 @@
  */
 
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 export type Phase = "dawn" | "day" | "dusk" | "night";
 
@@ -53,19 +54,41 @@ type GameClockState = {
   setEpochMinute: (m: number) => void;
 };
 
-export const useGameClockStore = create<GameClockState>((set) => ({
-  // First-launch baseline: 14:30 day 1. The M1 narrative beat is "you just
-  // arrived at the airport"; afternoon-arrival reads cozily without an
-  // ambient pressure to do anything before nightfall. Wake-up on a clean
-  // game gives ~5h of "day" + ~2h of "dusk" + the option to sleep at the
-  // hostel — three POI visits worth of session time before night.
-  epochMinute: 870,
-  advance: (mins) =>
-    set((s) => ({
-      epochMinute: s.epochMinute + Math.max(0, Math.round(mins)),
-    })),
-  setEpochMinute: (m) => set({ epochMinute: Math.max(0, Math.round(m)) }),
-}));
+export const useGameClockStore = create<GameClockState>()(
+  persist(
+    (set) => ({
+      // First-launch baseline: 14:30 day 1. The M1 narrative beat is "you just
+      // arrived at the airport"; afternoon-arrival reads cozily without an
+      // ambient pressure to do anything before nightfall. Wake-up on a clean
+      // game gives ~5h of "day" + ~2h of "dusk" + the option to sleep at the
+      // hostel — three POI visits worth of session time before night.
+      epochMinute: 870,
+      advance: (mins) =>
+        set((s) => ({
+          epochMinute: s.epochMinute + Math.max(0, Math.round(mins)),
+        })),
+      setEpochMinute: (m) => set({ epochMinute: Math.max(0, Math.round(m)) }),
+    }),
+    {
+      // Persist the canonical integer through dev-mode HMR resets, route-
+      // cache misses, and same-device reloads. Per AGENTS.md §7.6 the
+      // eventual M2-PR-Save-State swaps this for Convex; the API surface
+      // (advance / setEpochMinute) doesn't change.
+      name: "game-clock",
+      storage: createJSONStorage(() => {
+        if (typeof window === "undefined") {
+          return {
+            getItem: () => null,
+            setItem: () => undefined,
+            removeItem: () => undefined,
+          } as unknown as Storage;
+        }
+        return window.localStorage;
+      }),
+      partialize: (state) => ({ epochMinute: state.epochMinute }),
+    },
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Pure derived getters — exported for tests and for non-React consumers.
@@ -120,6 +143,24 @@ export function phaseOf(em: number): Phase {
   if (m >= 420 && m < 1080) return "day";
   if (m >= 1080 && m < 1200) return "dusk";
   return "night";
+}
+
+/**
+ * Month of year [1, 12] derived from `epochMinute`. Per ADR-010's
+ * "acknowledged abstraction": the in-game calendar is otherwise
+ * unstructured, so for the castle's seasonal-hours feature we adopt
+ * one in-game year = 365 days and derive the month as
+ * `Math.floor(((dayOf(em) - 1) % 365) / 30.4) + 1`. The 30.4 figure
+ * (≈ 365 / 12) means month boundaries don't fall exactly on day-30,
+ * which is the trade-off ADR-010 names — fine for the only M2
+ * consumer (Castelo de São Jorge's Mar–Oct vs Nov–Feb hours).
+ *
+ * If a richer calendar ever lands (real weekday/month modeling, NPC
+ * birthdays, festivals), supersede via ADR.
+ */
+export function monthOf(em: number): number {
+  const dayInYear = (dayOf(em) - 1) % 365;
+  return Math.floor(dayInYear / 30.4) + 1;
 }
 
 /**

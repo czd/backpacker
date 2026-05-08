@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { lingerVerbFor } from "./linger-verbs";
+import type { Doc } from "../../convex/_generated/dataModel";
+import { HOSTEL_NIGHT_COST_CENTS, lingerVerbFor } from "./linger-verbs";
 
 // Phase reminders (per ADR-006 / game-clock-store):
 //   dawn   05:00–07:00   (300–419)
@@ -14,130 +15,458 @@ const NIGHT_2200 = 1320; // 22:00, night phase
 const NIGHT_0200 = 120; // 02:00, night phase
 const DAWN_0530 = 330; // 05:30, dawn phase
 
-describe("lingerVerbFor — day phase verbs", () => {
+// Per ADR-010: in-game month = `Math.floor(((dayOf(em) - 1) % 365) / 30.4) + 1`
+// At day 1 (epochMinute 0..1439), `dayInYear = 0`, month = 1 (January = winter).
+// Day 152 → month ~6 (June, summer). For tests we need to vary epochMinute
+// to put the castle in vs out of seasonal Nov–Feb (months 11, 12, 1, 2).
+const DAY_1_NOON = DAY_NOON; // day 1 = month 1 (January = winter season)
+const SUMMER_DAY_NOON = 5 * 30 * 1440 + DAY_NOON; // day 151 ≈ month 6 (June)
+const SUMMER_DAY_DUSK_1900 = 5 * 30 * 1440 + 1140; // day 151 ≈ month 6 at 19:00
+const WINTER_DAY_1900 = DAY_1_NOON + 7 * 60; // day 1 (Jan) at 19:00
+const WINTER_DAY_1700 = DAY_1_NOON + 5 * 60; // day 1 (Jan) at 17:00
+
+// Mock POI doc factory. Convex `Doc<"pois">` carries `_id`, `_creationTime`,
+// plus all schema fields. Tests don't read those metadata fields, so we
+// stub them with placeholders and `as Doc<"pois">` past the type check.
+function mockPoi(overrides: Partial<Doc<"pois">>): Doc<"pois"> {
+  return {
+    _id: "test-id" as Doc<"pois">["_id"],
+    _creationTime: 0,
+    city: "lisbon",
+    slug: "test-slug",
+    name: "Test POI",
+    type: "view",
+    lat: 38.7,
+    lng: -9.1,
+    description: "Test description",
+    openHours: "Open 24h",
+    ...overrides,
+  } as Doc<"pois">;
+}
+
+describe("lingerVerbFor — hostel always returns Sleep", () => {
   it("hostel → Sleep until morning at 14:30 (advances 930 min)", () => {
-    const verb = lingerVerbFor("hostel", DAY_BASELINE);
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const verb = lingerVerbFor(poi, DAY_BASELINE);
     expect(verb.label).toBe("Sleep until morning");
     expect(verb.enabled).toBe(true);
     // 14:30 → 06:00 next day = 930 minutes.
     expect(verb.quantum).toBe(930);
+    // M2 PR4 (per ADR-007): hostel verb carries a €18 cost.
+    expect(verb.cost).toBe(1800);
+    expect(verb.cost).toBe(HOSTEL_NIGHT_COST_CENTS);
   });
 
-  it("transit → Watch the planes (15 min)", () => {
-    const verb = lingerVerbFor("transit", DAY_NOON);
-    expect(verb.label).toBe("Watch the planes");
-    expect(verb.quantum).toBe(15);
-    expect(verb.enabled).toBe(true);
-  });
-
-  it("view → Take it in (30 min)", () => {
-    const verb = lingerVerbFor("view", DAY_NOON);
-    expect(verb.label).toBe("Take it in");
-    expect(verb.quantum).toBe(30);
-    expect(verb.enabled).toBe(true);
-  });
-
-  it("sight → Walk the walls (60 min)", () => {
-    const verb = lingerVerbFor("sight", DAY_NOON);
-    expect(verb.label).toBe("Walk the walls");
-    expect(verb.quantum).toBe(60);
-    expect(verb.enabled).toBe(true);
-  });
-
-  it("market → Browse the stalls (30 min)", () => {
-    const verb = lingerVerbFor("market", DAY_NOON);
-    expect(verb.label).toBe("Browse the stalls");
-    expect(verb.quantum).toBe(30);
-    expect(verb.enabled).toBe(true);
-  });
-});
-
-describe("lingerVerbFor — dawn phase (acts like day for openness)", () => {
-  it("market is open at 05:30 dawn", () => {
-    const verb = lingerVerbFor("market", DAWN_0530);
-    expect(verb.label).toBe("Browse the stalls");
-    expect(verb.enabled).toBe(true);
-  });
-});
-
-describe("lingerVerbFor — dusk phase (acts like day for openness)", () => {
-  it("view at 18:30 dusk → Take it in (30 min, enabled)", () => {
-    const verb = lingerVerbFor("view", DUSK_1830);
-    expect(verb.label).toBe("Take it in");
-    expect(verb.quantum).toBe(30);
-    expect(verb.enabled).toBe(true);
-  });
-
-  it("sight is still open at dusk", () => {
-    const verb = lingerVerbFor("sight", DUSK_1830);
-    expect(verb.enabled).toBe(true);
-  });
-});
-
-describe("lingerVerbFor — night closure", () => {
-  it("market at 22:00 → closed, disabled, label hints at 09:00", () => {
-    const verb = lingerVerbFor("market", NIGHT_2200);
-    expect(verb.label).toMatch(/closed/i);
-    expect(verb.label).toMatch(/09:00/);
-    expect(verb.enabled).toBe(false);
-    expect(verb.quantum).toBe(0);
-  });
-
-  it("transit at 02:00 → still 'Watch the planes' (24h hub)", () => {
-    // The airport's openHours says "Open 24h (Terminal 1)"; the linger
-    // verb honors that. Real-phone testing surfaced the prior coherence
-    // bug: 24h prose contradicting a "Closed" button.
-    const verb = lingerVerbFor("transit", NIGHT_0200);
-    expect(verb.enabled).toBe(true);
-    expect(verb.label).toBe("Watch the planes");
-    expect(verb.quantum).toBe(15);
-  });
-
-  it("view at 22:00 → still 'Take it in' (24h public space)", () => {
-    // Miradouro de Santa Catarina is a public space — the kiosk closes
-    // around 24:00 but the parapet doesn't. Lingering at night is part
-    // of its cozy register (Adamastor, the river, the 25 de Abril
-    // bridge lit up). Per real-phone testing.
-    const verb = lingerVerbFor("view", NIGHT_2200);
-    expect(verb.enabled).toBe(true);
-    expect(verb.label).toBe("Take it in");
-    expect(verb.quantum).toBe(30);
-  });
-
-  it("sight at 02:00 → closed, disabled", () => {
-    const verb = lingerVerbFor("sight", NIGHT_0200);
-    expect(verb.enabled).toBe(false);
-  });
-
-  it("hostel at 22:00 → Sleep until morning (480 min), enabled", () => {
-    const verb = lingerVerbFor("hostel", NIGHT_2200);
+  it("hostel at 22:00 → Sleep until morning (480 min), enabled regardless of phase", () => {
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const verb = lingerVerbFor(poi, NIGHT_2200);
     expect(verb.label).toBe("Sleep until morning");
     expect(verb.enabled).toBe(true);
-    // 22:00 → 06:00 = 8 hours = 480 minutes.
     expect(verb.quantum).toBe(480);
   });
 
-  it("hostel at 02:00 → Sleep until morning (240 min), enabled", () => {
-    const verb = lingerVerbFor("hostel", NIGHT_0200);
+  it("hostel at 02:00 → Sleep until morning (240 min)", () => {
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const verb = lingerVerbFor(poi, NIGHT_0200);
     expect(verb.label).toBe("Sleep until morning");
     expect(verb.enabled).toBe(true);
-    // 02:00 → 06:00 = 4 hours = 240 minutes.
     expect(verb.quantum).toBe(240);
   });
-});
 
-describe("lingerVerbFor — hostel quantum is dynamic", () => {
-  it("varies with epochMinute (time of day matters)", () => {
-    const at1430 = lingerVerbFor("hostel", DAY_BASELINE).quantum;
-    const at2200 = lingerVerbFor("hostel", NIGHT_2200).quantum;
-    const at0200 = lingerVerbFor("hostel", NIGHT_0200).quantum;
+  it("hostel quantum varies with epochMinute (time of day matters)", () => {
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const at1430 = lingerVerbFor(poi, DAY_BASELINE).quantum;
+    const at2200 = lingerVerbFor(poi, NIGHT_2200).quantum;
+    const at0200 = lingerVerbFor(poi, NIGHT_0200).quantum;
     expect(at1430).not.toBe(at2200);
     expect(at2200).not.toBe(at0200);
   });
 
-  it("is the same across days (only minute-of-day matters)", () => {
-    const day1 = lingerVerbFor("hostel", NIGHT_2200);
-    const day3 = lingerVerbFor("hostel", NIGHT_2200 + 2 * 1440);
+  it("hostel quantum is the same across days (only minute-of-day matters)", () => {
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const day1 = lingerVerbFor(poi, NIGHT_2200);
+    const day3 = lingerVerbFor(poi, NIGHT_2200 + 2 * 1440);
     expect(day1.quantum).toBe(day3.quantum);
+  });
+});
+
+describe("lingerVerbFor — availability undefined defaults to 24/7", () => {
+  it("transit (no availability) at 02:00 → still 'Watch the planes'", () => {
+    // Per ADR-010: `availability` absent = always open. Matches the M1
+    // semantics for the airport's "Open 24h (Terminal 1)" prose.
+    const poi = mockPoi({ type: "transit", availability: undefined });
+    const verb = lingerVerbFor(poi, NIGHT_0200);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Watch the planes");
+    expect(verb.quantum).toBe(15);
+  });
+
+  it("view (no availability) at 22:00 night → still 'Take it in'", () => {
+    // Miradouro de Santa Catarina is a public space; the parapet
+    // doesn't close. Per ADR-010 absent availability = 24/7.
+    const poi = mockPoi({ type: "view", availability: undefined });
+    const verb = lingerVerbFor(poi, NIGHT_2200);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Take it in");
+    expect(verb.quantum).toBe(30);
+  });
+
+  it("transit (no availability) at noon → 'Watch the planes'", () => {
+    const poi = mockPoi({ type: "transit", availability: undefined });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Watch the planes");
+  });
+
+  it("view (no availability) at dawn 05:30 → 'Take it in'", () => {
+    const poi = mockPoi({ type: "view", availability: undefined });
+    const verb = lingerVerbFor(poi, DAWN_0530);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Take it in");
+  });
+
+  it("view (no availability) at dusk 18:30 → 'Take it in'", () => {
+    const poi = mockPoi({ type: "view", availability: undefined });
+    const verb = lingerVerbFor(poi, DUSK_1830);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Take it in");
+  });
+});
+
+describe("lingerVerbFor — sight with seasonal availability (castle)", () => {
+  // Castle availability: 09:00–21:00 base; Nov–Feb seasonal 09:00–18:00.
+  const castleAvailability = {
+    ranges: [{ open: 540, close: 1260 }], // 09:00–21:00
+    seasonal: {
+      startMonth: 11,
+      endMonth: 2,
+      ranges: [{ open: 540, close: 1080 }], // 09:00–18:00
+    },
+  };
+
+  it("summer noon → 'Walk the walls' (in summer base hours)", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, SUMMER_DAY_NOON);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Walk the walls");
+    expect(verb.quantum).toBe(60);
+  });
+
+  it("summer 19:00 → still open (base hours go to 21:00)", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, SUMMER_DAY_DUSK_1900);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Walk the walls");
+  });
+
+  it("winter (January) 19:00 → closed (seasonal hours stop at 18:00)", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, WINTER_DAY_1900);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toMatch(/closed/i);
+    expect(verb.quantum).toBe(0);
+  });
+
+  it("winter (January) 17:00 → open (still within seasonal hours)", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, WINTER_DAY_1700);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Walk the walls");
+  });
+
+  it("sight at 02:00 → closed (outside any range)", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, NIGHT_0200);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toMatch(/closed/i);
+  });
+
+  // Regression for the owner-found bug: castle's closed label
+  // happens to be "09:00" because that IS its next-open time —
+  // the previous hardcoded label was right by coincidence. This
+  // test pins the dynamic behavior so future POIs with different
+  // hours don't silently regress.
+  it("sight at 22:00 (just after 21:00 close) → label points at 09:00", () => {
+    const poi = mockPoi({ type: "sight", availability: castleAvailability });
+    const verb = lingerVerbFor(poi, 1320); // 22:00
+    expect(verb.label).toContain("09:00");
+    expect(verb.enabled).toBe(false);
+  });
+});
+
+describe("lingerVerbFor — market (Mercado da Ribeira)", () => {
+  // Mercado availability: 10:00–24:00 base.
+  const mercadoAvailability = {
+    ranges: [{ open: 600, close: 1440 }], // 10:00–24:00
+  };
+
+  // M2 PR7: market verb hands off to the azulejo mini-game route
+  // ('Restore an azulejo panel'). The verb carries `payout: 1500`
+  // (€15 reward) and `route: '/lisbon/jobs/azulejo'`. Quantum is 0
+  // because the mini-game owns its own time.
+  it("market at noon → 'Restore an azulejo panel' with €15 payout + route", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.label).toBe("Restore an azulejo panel");
+    expect(verb.quantum).toBe(0);
+    expect(verb.enabled).toBe(true);
+    expect(verb.payout).toBe(1500);
+    expect(verb.route).toBe("/lisbon/jobs/azulejo");
+  });
+
+  it("market at 02:00 → closed (m=120, before the 10:00 open)", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, NIGHT_0200);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toMatch(/closed/i);
+    expect(verb.quantum).toBe(0);
+    // Closed verbs don't carry payout (no reward when can't access).
+    expect(verb.payout).toBeUndefined();
+    expect(verb.route).toBeUndefined();
+  });
+
+  it("market at 22:00 → still open ('Restore an azulejo panel')", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, NIGHT_2200);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Restore an azulejo panel");
+    expect(verb.payout).toBe(1500);
+  });
+
+  it("market at 09:00 → closed (one minute before open)", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, 540); // 09:00
+    expect(verb.enabled).toBe(false);
+  });
+
+  it("market at 10:00 → open (first minute)", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, 600); // 10:00
+    expect(verb.enabled).toBe(true);
+  });
+
+  // Regression for the owner-found bug: the closed-state label was
+  // hardcoded to "Closed — come back at 09:00" regardless of when the
+  // POI actually reopened. The mercado opens at 10:00, not 09:00.
+  it("market at 02:00 → label points at 10:00 (the actual next open)", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, NIGHT_0200);
+    expect(verb.label).toContain("10:00");
+    expect(verb.label).not.toContain("09:00");
+  });
+
+  it("market at 06:00 → label still points at 10:00", () => {
+    const poi = mockPoi({ type: "market", availability: mercadoAvailability });
+    const verb = lingerVerbFor(poi, 360); // 06:00
+    expect(verb.label).toContain("10:00");
+  });
+});
+
+describe("lingerVerbFor — Largo do Carmo busking POI (M2 PR8 hand-off)", () => {
+  // Per ADR-010: Largo do Carmo's M2 PR8 shape — 06:00–22:00, the
+  // busking-allowed window per Anthropologist convention review. This
+  // test is the hand-off proof that the structured availability schema
+  // expresses what the M1 hardcoded type rule could not.
+  const largoAvailability = {
+    ranges: [{ open: 360, close: 1320 }], // 06:00–22:00
+  };
+
+  it("Largo do Carmo at 12:00 → open", () => {
+    const poi = mockPoi({ type: "view", availability: largoAvailability });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Take it in");
+  });
+
+  it("Largo do Carmo at 23:00 → closed (past 22:00)", () => {
+    const poi = mockPoi({ type: "view", availability: largoAvailability });
+    const verb = lingerVerbFor(poi, 23 * 60);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toMatch(/closed/i);
+  });
+
+  it("Largo do Carmo at 04:00 → closed (before 06:00)", () => {
+    const poi = mockPoi({ type: "view", availability: largoAvailability });
+    const verb = lingerVerbFor(poi, 4 * 60);
+    expect(verb.enabled).toBe(false);
+  });
+
+  it("Largo do Carmo at 06:00 → open (first minute of the window)", () => {
+    const poi = mockPoi({ type: "view", availability: largoAvailability });
+    const verb = lingerVerbFor(poi, 360);
+    expect(verb.enabled).toBe(true);
+  });
+
+  it("Largo do Carmo at 22:00 → closed (close-exclusive)", () => {
+    const poi = mockPoi({ type: "view", availability: largoAvailability });
+    const verb = lingerVerbFor(poi, 1320);
+    expect(verb.enabled).toBe(false);
+  });
+});
+
+describe("lingerVerbFor — square (M2 PR8 busking verb)", () => {
+  // Per the synthesis README: Largo do Carmo ships as the new
+  // `square` POI type. The verb is the §5.2 safety-net realized.
+  const carmoAvailability = {
+    ranges: [{ open: 360, close: 1320 }], // 06:00–22:00
+  };
+
+  it('square at noon → "Play for spare change", kind: "busking", quantum 30', () => {
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.enabled).toBe(true);
+    expect(verb.label).toBe("Play for spare change");
+    // 30 game-min per session — matches PR7 mini-game session length.
+    expect(verb.quantum).toBe(30);
+    // The busking kind tag dispatches the busking-specific completion
+    // path in lisbon-map.tsx's handleLinger.
+    expect(verb.kind).toBe("busking");
+  });
+
+  it("square verb has no cost (busking is wallet-independent — §5.2 safety net)", () => {
+    // Critical contract: busking is the safety net. It MUST NOT carry
+    // a cost field; the soft-refusal pattern would otherwise lock
+    // broke players out of their only income source.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.cost).toBeUndefined();
+  });
+
+  it("square verb has no payout suffix (RNG-resolved at completion, not fixed)", () => {
+    // The seven-value band resolves at completion via
+    // pickBuskingPayout. Rendering a fixed " · €N" suffix would be
+    // dishonest about the payout shape. The drawer's PoiDrawerBody
+    // skips the payout suffix branch when verb.kind === "busking".
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.payout).toBeUndefined();
+  });
+
+  it("square verb is NOT a route-based verb (runs the local rAF loop)", () => {
+    // Mini-games (market) take the player to /lisbon/jobs/azulejo;
+    // busking happens in-place at the POI drawer.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.route).toBeUndefined();
+  });
+
+  it("square at 23:00 → closed (past 22:00 close); verb still has no kind tag", () => {
+    // Closed-state for `square` flows through the same closedLabel
+    // path as other POIs. The kind tag is set on enabled verbs only
+    // — a closed busking verb shouldn't read as kind: "busking" to
+    // the drawer (which would fire the busking-specific UI). Quantum
+    // is 0; label includes "closed". This protects the affordance
+    // boundary: a player at 23:30 sees "Closed — come back at 06:00",
+    // not the busking action.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, 23 * 60);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toMatch(/closed/i);
+    expect(verb.quantum).toBe(0);
+    expect(verb.kind).toBeUndefined();
+  });
+
+  it("square at 06:00 → open (first minute, kind tag set)", () => {
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, 360);
+    expect(verb.enabled).toBe(true);
+    expect(verb.kind).toBe("busking");
+  });
+
+  it("square at 04:00 → closed (before 06:00); points at next-open 06:00", () => {
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, 4 * 60);
+    expect(verb.enabled).toBe(false);
+    expect(verb.label).toContain("06:00");
+  });
+
+  it("square verb wording is locked: 'Play for spare change' (NOT 'Busk for spare change')", () => {
+    // Per ADR-003 amendment + Anthropologist Topic C: 'busk' is an
+    // Anglo verb; 'play' translates cleanly. If a future Narrative
+    // Designer pass touches this string, ADR-003 should be updated
+    // alongside.
+    const poi = mockPoi({
+      type: "square",
+      availability: carmoAvailability,
+    });
+    const verb = lingerVerbFor(poi, DAY_NOON);
+    expect(verb.label).toBe("Play for spare change");
+    expect(verb.label).not.toMatch(/^busk/i);
+  });
+});
+
+describe("lingerVerbFor — cost field (M2 PR4 per ADR-007)", () => {
+  it("hostel verb carries cost: 1800 (€18) regardless of phase", () => {
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    expect(lingerVerbFor(poi, DAY_BASELINE).cost).toBe(1800);
+    expect(lingerVerbFor(poi, NIGHT_2200).cost).toBe(1800);
+    expect(lingerVerbFor(poi, NIGHT_0200).cost).toBe(1800);
+    expect(lingerVerbFor(poi, DAWN_0530).cost).toBe(1800);
+    expect(lingerVerbFor(poi, DUSK_1830).cost).toBe(1800);
+  });
+
+  it("non-hostel verbs leave cost undefined (no charge for linger)", () => {
+    // M2 ship: only the hostel charges. Mini-game (PR7) and busking
+    // (PR8) PAY rather than charge — they use creditWallet at
+    // completion, not the cost field. Future POIs with linger costs
+    // (museum entry, tasca meal) would set cost; today none do.
+    const transit = mockPoi({ type: "transit", availability: undefined });
+    expect(lingerVerbFor(transit, DAY_NOON).cost).toBeUndefined();
+
+    const view = mockPoi({ type: "view", availability: undefined });
+    expect(lingerVerbFor(view, DAY_NOON).cost).toBeUndefined();
+
+    const sight = mockPoi({
+      type: "sight",
+      availability: { ranges: [{ open: 540, close: 1260 }] },
+    });
+    expect(lingerVerbFor(sight, DAY_NOON).cost).toBeUndefined();
+
+    const market = mockPoi({
+      type: "market",
+      availability: { ranges: [{ open: 600, close: 1440 }] },
+    });
+    expect(lingerVerbFor(market, DAY_NOON).cost).toBeUndefined();
+  });
+
+  it("hostel cost stays attached even when verb is disabled-by-quantum-ish edge", () => {
+    // Hostel is always enabled, so no current branch returns it as
+    // disabled. The contract is "cost is the price the player pays
+    // when they tap an enabled hostel verb"; if a future ADR adds a
+    // disabled-hostel branch (e.g. "no rooms available tonight"),
+    // this test will surface that the cost still semantically applies.
+    const poi = mockPoi({ type: "hostel", availability: undefined });
+    const verb = lingerVerbFor(poi, NIGHT_2200);
+    expect(verb.enabled).toBe(true);
+    expect(verb.cost).toBe(HOSTEL_NIGHT_COST_CENTS);
+  });
+
+  it("HOSTEL_NIGHT_COST_CENTS exports the canonical 1800 (€18) value", () => {
+    // Per ADR-007 sign-off: €18 is the placeholder for Pensão Estrela
+    // do Tejo. Anthropologist sanity-check on the price is queued
+    // separately; if revised post-PR4, this constant + the test
+    // above are the one-line tweak.
+    expect(HOSTEL_NIGHT_COST_CENTS).toBe(1800);
   });
 });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { animate, useReducedMotion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
   Layer,
   Map,
@@ -15,7 +16,14 @@ import type { StyleSpecification } from "maplibre-gl";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { AvatarMarker } from "./avatar-marker";
+import {
+  BUSKING_RESTED_DRAIN,
+  buskingMessageForCents,
+  pickBuskingPayout,
+} from "./busking";
 import { phaseOf, useGameClockStore, type Phase } from "./game-clock-store";
+import { canAfford, usePlayerStore } from "./player-store";
+import { useWorldPositionStore } from "./world-position-store";
 import {
   bearingDeg,
   boundsForFit,
@@ -25,11 +33,48 @@ import {
   travelDurationMs,
   type LngLat,
 } from "./geo";
-import { lingerVerbFor } from "./linger-verbs";
+import { useAzulejoStore } from "./jobs/azulejo/azulejo-store";
+import { lingerVerbFor, type LingerVerb } from "./linger-verbs";
+import {
+  TRANSIT_COST_CENTS,
+  TRANSIT_GAME_MINUTES_FLAT,
+  TRANSIT_REAL_DURATION_MS,
+  transitModesForLegPoints,
+  type TransitMode,
+} from "./transit-modes";
+
+/**
+ * M2 PR7: when the selected POI is the Mercado da Ribeira and the
+ * player has an in-progress azulejo session, override the linger
+ * verb's label to "Continue your panel" and drop the payout suffix
+ * (the payout lands on completion, not on resume — the player is
+ * walking back to a panel they already started).
+ *
+ * Pure function. Tests cover both branches via the linger-verbs
+ * suite + a dedicated mini-game integration vitest.
+ */
+function overrideForAzulejoInProgress(
+  verb: LingerVerb,
+  poi: { type: string; slug: string },
+  hasInProgress: boolean,
+): LingerVerb {
+  if (!hasInProgress) return verb;
+  if (poi.type !== "market") return verb;
+  if (poi.slug !== "mercado-da-ribeira") return verb;
+  return {
+    ...verb,
+    label: "Continue your panel",
+    // Drop the payout suffix on resume — the panel's already in flight.
+    payout: undefined,
+  };
+}
 import { PoiMarker } from "./poi-marker";
 import { DEFAULT_SNAP, PoiDrawer, SNAP_POINTS, type Poi } from "./poi-drawer";
 import { RecenterButton } from "./recenter-button";
 import { TimeOfDayClock } from "./time-of-day-clock";
+import { TiredChip } from "./tired-chip";
+import { startTimedAdvance } from "./timed-advance";
+import { WalletChip } from "./wallet-chip";
 
 // Cozy warm map style. Path A from the M1 PR2-second-slice plan: the
 // styles are vendored as JSON style documents at /public/map-styles/.
@@ -167,6 +212,26 @@ const TRAIL_SOURCE_ID = "travel-trail-source";
  * Lisbon, both visible" — cleaner framing per the M1 PR4-fixup-2 brief.
  */
 const AIRPORT_POI_SLUG = "lisbon-aeroporto";
+
+/**
+ * Slug of the Largo do Carmo busking POI (M2 PR8). Used as the deep-
+ * link target for the soft-refusal pattern: when a player can't afford
+ * the hostel night or a paid transit ride, tapping the soft-refusal
+ * label flows them to Largo do Carmo's drawer where the busking verb
+ * is the safety-net path back to a positive balance. The slug is the
+ * Convex doc's `slug` field on the seed row added in PR8.
+ */
+const LARGO_DO_CARMO_SLUG = "largo-do-carmo";
+
+/**
+ * Hold duration for the busking success message (M2 PR8). The message
+ * appears inline in the drawer at completion; after this many real-ms
+ * the parent clears the message and the drawer auto-collapses to the
+ * half snap so the player can choose to busk again or leave. Per the
+ * brief: ~1500ms — long enough to read, short enough that re-tapping
+ * for another session feels snappy.
+ */
+const BUSKING_MESSAGE_HOLD_MS = 1500;
 
 /**
  * Padding for the initial fit-bounds (no drawer is open at first paint).
@@ -311,6 +376,12 @@ export function LisbonMap() {
   // run; otherwise the 5 Lisbon POIs from M1 PR1. M1 PR3 (this slice) wires
   // the result into <Marker> children below and into the sr-only list view.
   const pois = useQuery(api.pois.getPoisByCity, { city: "lisbon" });
+  const router = useRouter();
+  // M2 PR7: subscribe to the azulejo persistence store so the
+  // Mercado da Ribeira drawer's verb flips to "Continue your panel"
+  // when an in-progress session exists. Cheap selector — re-reads
+  // only when the in-progress state transitions in/out of `null`.
+  const azulejoInProgress = useAzulejoStore((s) => s.inProgress);
 
   if (pois !== undefined && pois.length === 0) {
     // Seed missing — owner needs to run `bunx convex run seed:seedLisbon`.
@@ -366,6 +437,49 @@ export function LisbonMap() {
     };
   }, []);
 
+  // **Dev/test seam — player state.** Sibling to `__gameClock` above.
+  // Exposes the player-store mutators on window so M2 PR4–PR8's e2e
+  // tests can force wallet / rested-ness state without driving real
+  // mini-game loops or sleep verbs. Same NODE_ENV gate; same lifecycle.
+  // Per ADR-007 + ADR-008. M2 PR2 ships this alongside the store
+  // itself so consumer PRs (hostel sleep, HUD, mini-game, busking +
+  // transit) inherit the seam at-mount, no per-PR re-wiring.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (typeof window === "undefined") return;
+    const w = window as Window &
+      typeof globalThis & {
+        __player?: {
+          setWallet: (cents: number) => void;
+          chargeWallet: (cents: number) => void;
+          creditWallet: (cents: number) => void;
+          getWallet: () => number;
+          setRested: (value: number) => void;
+          drainRested: (amount: number) => void;
+          restoreRested: () => void;
+          getRested: () => number;
+        };
+      };
+    w.__player = {
+      setWallet: (cents: number) =>
+        usePlayerStore.getState().setWallet(cents),
+      chargeWallet: (cents: number) =>
+        usePlayerStore.getState().chargeWallet(cents),
+      creditWallet: (cents: number) =>
+        usePlayerStore.getState().creditWallet(cents),
+      getWallet: () => usePlayerStore.getState().walletEurosCentsInternal,
+      setRested: (value: number) =>
+        usePlayerStore.getState().setRested(value),
+      drainRested: (amount: number) =>
+        usePlayerStore.getState().drainRested(amount),
+      restoreRested: () => usePlayerStore.getState().restoreRested(),
+      getRested: () => usePlayerStore.getState().rested,
+    };
+    return () => {
+      delete w.__player;
+    };
+  }, []);
+
   // Cozy style — phase-driven (per ADR-006). OS-preference is the
   // fallback for the theoretical SSR pre-hydration window only; once
   // the store's default 870 is read, phase wins.
@@ -395,18 +509,84 @@ export function LisbonMap() {
   // POI exactly. When a fast-travel completes, we set this to the
   // destination POI's slug; the drawer derives `isAtPoi` from
   // `currentPoiSlug === selectedPoi.slug`.
-  const [currentPoiSlug, setCurrentPoiSlug] = useState<string | null>(
-    AVATAR_START_SLUG,
+  //
+  // Initial value reads from `useWorldPositionStore` so the avatar
+  // resumes where the player left it across sibling-route navigations
+  // (`/lisbon/jobs/azulejo` and back) and across same-device reloads.
+  // Pre-PR7 this was a plain `useState(AVATAR_START_SLUG)` which
+  // teleported the player to the airport every time the map remounted.
+  const [currentPoiSlug, setCurrentPoiSlugLocal] = useState<string | null>(
+    () => {
+      if (typeof window === "undefined") return AVATAR_START_SLUG;
+      return useWorldPositionStore.getState().currentPoiSlug ?? AVATAR_START_SLUG;
+    },
   );
+  // Wrap the local setter so every slug change also mirrors into the
+  // persisted store. Coordinates flow through `setArrival` instead —
+  // the only callers that need to update the slug also know the
+  // destination POI's coords (line ~971, on arrival).
+  const setCurrentPoiSlug = setCurrentPoiSlugLocal;
 
-  // Avatar state — see AGENTS.md §7.1. Initial position is the airport
-  // (per the brief's narrative beat: the player has just arrived). The
+  // Avatar state — see AGENTS.md §7.1. Initial position resumes from
+  // the persisted store (same rationale as `currentPoiSlug` above). The
   // `traveling` flag drives the avatar marker's accelerated pulse and the
   // dotted-line trail's visibility. `facing` is the current bearing (0 =
   // north) and is set to point at the destination when a fast-travel
   // begins. `trailEnd` records where the trail terminates while traveling
   // *and* during the brief fade-out window after arrival; null otherwise.
-  const [avatar, setAvatar] = useState<LngLat>(AIRPORT_COORDS);
+  const [avatar, setAvatar] = useState<LngLat>(() => {
+    if (typeof window === "undefined") return AIRPORT_COORDS;
+    const { avatarLng, avatarLat } = useWorldPositionStore.getState();
+    return { lng: avatarLng, lat: avatarLat };
+  });
+
+  // **M2 PR8 — session-seen POI slugs.** Per the GD's "discoverable on
+  // visit 1, invisible on visit 5" tuning rule (research/lisbon/largo-
+  // do-carmo/README.md Pick 3), the description prose for each POI
+  // renders **once at peek-snap on the first session-tap**; subsequent
+  // same-session taps go straight to the linger-verb action.
+  //
+  // Implementation per the brief's recommendation (Option A): a ref-
+  // backed `Set<string>` of POIs that have been opened this mount.
+  // The ref is the one source of truth for "have I seen this slug yet?";
+  // a parallel `currentDrawerShouldShowDescription` state piece carries
+  // the answer to "should the *currently-open* drawer render prose?"
+  // The seen set is mutated synchronously inside `handlePoiSelect`
+  // (before React batches in the next render), and the boolean state
+  // is committed alongside `setSelectedPoi` so the drawer's first
+  // render sees the right value.
+  //
+  // **Why a ref + a boolean state instead of just a Set state?**
+  // React 19 batches setState calls — adding to the set inside the
+  // same handler that calls `setSelectedPoi(poi)` would mean the
+  // drawer's first render sees the post-add set (`has(slug) === true`)
+  // even on the first tap. Decoupling "have I seen?" (ref, mutated
+  // imperatively) from "should this drawer render?" (state, set
+  // explicitly to the pre-add answer) keeps the two contracts honest.
+  // The ref resets on remount (component unmount → set is GC'd along
+  // with the closure), which is the correct "this session" semantic.
+  const seenSlugsRef = useRef<Set<string>>(new Set());
+  const [shouldShowDescription, setShouldShowDescription] =
+    useState(true);
+
+  // **M2 PR8 — busking session success message.** When the busking
+  // linger completes, we set the locked three-band message string
+  // here; the drawer renders it inline. After
+  // `BUSKING_MESSAGE_HOLD_MS` we clear it and (if reduced-motion is
+  // off) snap the drawer back to the half snap so the player can
+  // choose to busk again or leave. Cleared also when the drawer
+  // closes / a different POI is selected, so a stale message never
+  // leaks to a different POI's drawer.
+  const [buskingMessage, setBuskingMessage] = useState<string | null>(null);
+
+  // **Generation counter for busking-message timeouts.** Each
+  // session gets a unique id; the post-hold setTimeout closes over
+  // its own id and only clears the message if the counter still
+  // matches. Without this, a fast-tap that started a second session
+  // before the first session's setTimeout fired would have its
+  // message wiped early by the stale timeout. The pattern mirrors
+  // `travelGenRef`'s shape elsewhere in this file.
+  const buskingMessageGenRef = useRef(0);
   const [traveling, setTraveling] = useState(false);
   const [facing, setFacing] = useState(0);
   const [trail, setTrail] = useState<{
@@ -467,81 +647,54 @@ export function LisbonMap() {
   }, [traveling]);
 
   /**
-   * In-game time advance during fast-travel. Per the M1 PR5 brief:
-   * 3 game-minutes per real-second, gated on `document.hidden` so
-   * backgrounding the tab pauses the world (when the player returns,
-   * the world waited; we do NOT "catch up" elapsed real-time).
+   * In-game time advance during fast-travel. Per the M1 PR5 brief +
+   * ADR-007's tuning: 4 game-minutes per real-second, gated on
+   * `document.hidden` so backgrounding the tab pauses the world (when
+   * the player returns, the world waited; we do NOT "catch up"
+   * elapsed real-time).
    *
    * **Reduced-motion path:** instead of running the rAF loop, we
    * jump-cut the advance — `handleTravelTo` computes the leg's total
    * duration upfront and calls `advance(total)` once at the start.
    * The rAF loop is the smooth-time path; the jump-cut is the
-   * reduced-motion equivalent.
+   * reduced-motion equivalent. The helper is bypassed entirely on
+   * the reduced-motion path because reduced-motion is the caller's
+   * decision — see `timed-advance.ts` header comment.
    *
-   * **Unmount safety:** the effect's cleanup cancels the pending rAF
-   * handle. If the component unmounts mid-travel, no orphaned frame
-   * keeps trying to advance the (gone) store.
+   * **Helper indirection:** the rAF + accumulator + `document.hidden`
+   * pattern is owned by `startTimedAdvance` (M2 PR6, per ADR-005's
+   * Consequences amendment). The store mutations stay here so a
+   * future caller (metro/taxi in PR8 — rest-neutral; mini-game in
+   * PR7 — different drain shape) can wire its own mutation set
+   * without forking the helper.
+   *
+   * **Unmount safety:** the effect's cleanup calls `handle.cancel()`.
+   * If the component unmounts mid-travel, no orphaned frame keeps
+   * trying to advance the (gone) store.
    */
   useEffect(() => {
-    let rafId: number | null = null;
-    let lastFrameTime: number | null = null;
-    // Local fractional accumulator. Per-frame deltas at 60fps are
-    // ~0.05 game-min; the store rounds advance() to integer minutes
-    // per ADR-005, so per-frame commits would round to 0 and nothing
-    // would advance. We accumulate locally and commit only when a
-    // whole game-minute has elapsed. The remainder carries over.
-    let accumulatedMins = 0;
+    if (reducedMotion) return; // jump-cut path lives in fastTravelTo
+    if (!traveling) return;
 
-    const tick = (now: number) => {
-      // Stop if we left traveling state, or if the tab is hidden.
-      // `document.hidden` is checked per-frame so backgrounding mid-
-      // travel pauses the loop without needing a separate listener
-      // (the loop simply stops re-scheduling itself when hidden).
-      if (!travelingRef.current) {
-        rafId = null;
-        lastFrameTime = null;
-        accumulatedMins = 0;
-        return;
-      }
-      if (typeof document !== "undefined" && document.hidden) {
-        // Reset lastFrameTime so the next visible frame doesn't apply
-        // a giant delta from the hidden window. This is the "world
-        // waited" semantic the brief asks for. The accumulator is
-        // preserved — fractional progress before backgrounding is not
-        // lost.
-        lastFrameTime = null;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      if (lastFrameTime === null) {
-        lastFrameTime = now;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      const deltaSec = (now - lastFrameTime) / 1000;
-      lastFrameTime = now;
-      const deltaMins = deltaSec * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
-      accumulatedMins += deltaMins;
-      // Commit whole minutes; carry the remainder. Over a 19s airport
-      // leg at 3 game-min/sec we commit ~57 minutes one at a time,
-      // each minute about 333ms apart in real time. The visible
-      // ticking on the clock chip is the cumulative result of these
-      // single-minute commits.
-      if (accumulatedMins >= 1) {
-        const wholeMins = Math.floor(accumulatedMins);
-        accumulatedMins -= wholeMins;
-        useGameClockStore.getState().advance(wholeMins);
-      }
-      rafId = requestAnimationFrame(tick);
-    };
+    const handle = startTimedAdvance({
+      rate: GAME_MINS_PER_REAL_SEC_DURING_TRAVEL,
+      onMinuteCommitted: (mins) => {
+        useGameClockStore.getState().advance(mins);
+        // **M2 PR4 (per ADR-008):** awake-time rested drain at 1/1440
+        // per game-minute. Walking the 76-game-min airport→central
+        // leg drains ~5%; short Baixa hops drain ~0.5–1%. Metro and
+        // taxi (PR8) bypass this loop entirely with a one-shot
+        // synchronous advance, so they stay rest-neutral by
+        // construction — PR8 won't have to disable the drain.
+        usePlayerStore.getState().drainRested(mins / 1440);
+      },
+      // External continuation predicate — read the ref each frame so
+      // a `setTraveling(false)` from `fastTravelTo`'s arrival branch
+      // stops the loop without needing a re-mount of this effect.
+      shouldContinue: () => travelingRef.current,
+    });
 
-    if (traveling && !reducedMotion) {
-      rafId = requestAnimationFrame(tick);
-    }
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
+    return () => handle.cancel();
     // `reducedMotion` is read at effect-mount time (not via ref) — when
     // the player flips the OS preference mid-session it triggers a
     // useReducedMotion re-render, and this effect re-runs with the new
@@ -744,6 +897,14 @@ export function LisbonMap() {
         const totalGameMins =
           (durationMs / 1000) * GAME_MINS_PER_REAL_SEC_DURING_TRAVEL;
         useGameClockStore.getState().advance(totalGameMins);
+        // **M2 PR4 (per ADR-008):** mirror the awake-time rested
+        // drain for the reduced-motion jump-cut. Walking burns rested
+        // even under prefers-reduced-motion — the player isn't asking
+        // for the rested-mechanic to be reduced, only the visual
+        // motion. Same drain rate as the rAF path (1/1440 per
+        // game-min). Round on the store side via `drainRested`;
+        // the store accepts fractional drains directly per ADR-007.
+        usePlayerStore.getState().drainRested(totalGameMins / 1440);
 
         setTraveling(true);
         setAvatar(destination);
@@ -823,6 +984,30 @@ export function LisbonMap() {
       // drawer back to half — matching the §6.3 default-on-open contract.
       setActiveSnapPoint(DEFAULT_SNAP);
 
+      // **M2 PR8: clear any stale busking message** when the player
+      // opens a different POI's drawer. A message generated at Largo
+      // do Carmo should not flash inside, e.g., the airport's drawer.
+      // Bump the gen counter so any pending setTimeout that would
+      // re-clear (or re-snap) is invalidated — the new POI's drawer
+      // shouldn't have its layout yanked by a stale busking-message
+      // hold expiring.
+      setBuskingMessage(null);
+      buskingMessageGenRef.current++;
+
+      // **M2 PR8: description-once-per-session.** Snapshot the pre-add
+      // answer into a state flag, THEN mutate the ref (synchronously,
+      // outside React's setState path). The drawer's first render
+      // reads the snapshot via `shouldShowDescription`. The next time
+      // this slug is tapped, the ref already contains it, the snapshot
+      // resolves to `false`, and the drawer suppresses the prose.
+      const wasSeen = seenSlugsRef.current.has(poi.slug);
+      setShouldShowDescription(!wasSeen);
+      // Mutate the ref synchronously — it's NOT React state, so it
+      // commits the same tick. By the next render, ref.has(slug) is
+      // true regardless of whether the player taps the same POI again
+      // or a different one.
+      seenSlugsRef.current.add(poi.slug);
+
       // Pan the camera with the half-snap offset by default — that's the
       // snap the drawer opens at per the M1 DoD.
       const map = mapRef.current;
@@ -837,6 +1022,37 @@ export function LisbonMap() {
     },
     [offsetForSnap],
   );
+
+  /**
+   * M2 PR8 — soft-refusal deep-link handler.
+   *
+   * Wired into the drawer's `onSoftRefusal` for both the cost-bearing
+   * linger verb (hostel sleep) and the cost-bearing transit modes
+   * (metro, taxi). When tapped, navigates the drawer to Largo do Carmo
+   * so the player can busk for spare change. Per ADR-007's design
+   * contract: the soft-refusal is a redirect to the §5.2 safety net,
+   * not a dead-end disabled state.
+   *
+   * The handler resolves the Carmo POI from the `pois` query result
+   * and calls `handlePoiSelect` on it — same code path the player
+   * would hit by tapping the marker themselves. The drawer
+   * transitions naturally (Vaul's `key` discipline mounts a new
+   * drawer instance per slug). If Carmo is not in the POI list (the
+   * seed hasn't been re-run after PR8), the handler is a no-op and a
+   * dev-mode console warning surfaces — same posture as the M1
+   * "seed didn't run" warn at component mount.
+   */
+  const handleSoftRefusal = useCallback(() => {
+    const carmo = pois?.find((p) => p.slug === LARGO_DO_CARMO_SLUG);
+    if (!carmo) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[lisbon] soft-refusal target ${LARGO_DO_CARMO_SLUG} not in pois — did you re-run \`bunx convex run seed:seedLisbon\` after PR8?`,
+      );
+      return;
+    }
+    handlePoiSelect(carmo);
+  }, [pois, handlePoiSelect]);
 
   /**
    * Travel-here button handler. Runs the choreographed sequence:
@@ -906,7 +1122,15 @@ export function LisbonMap() {
       //    motion, per §6.5. The half-snap re-pan with offset is
       //    handled by the existing panToPoi via the snap-change
       //    callback chain.
+      //
+      // Persist the arrival to `useWorldPositionStore` so a sibling-
+      // route nav (e.g., into the mini-game and back) restores the
+      // avatar at this POI rather than teleporting back to the airport.
       setCurrentPoiSlug(poi.slug);
+      useWorldPositionStore.getState().setArrival(poi.slug, {
+        lng: poi.lng,
+        lat: poi.lat,
+      });
       if (!reducedMotion) {
         setActiveSnapPoint(DEFAULT_SNAP);
       }
@@ -929,6 +1153,163 @@ export function LisbonMap() {
       panToPoi(selectedPoi, snap);
     },
     [panToPoi, selectedPoi],
+  );
+
+  /**
+   * **M2 PR8 — paid transit handler (metro / taxi).**
+   *
+   * Per ADR-007: paid transit is a one-shot synchronous advance — no
+   * rAF loop, no per-minute drain. The wallet is charged up front,
+   * the avatar fast-travels visually (re-using the existing
+   * `fastTravelTo` machinery for the dotted-line trail + lerp
+   * animation), the game clock advances by the mode's flat
+   * `TRANSIT_GAME_MINUTES_FLAT` value, and rested is left untouched.
+   *
+   * The rest-neutrality is what makes paid transit "buy back the day"
+   * (ADR-007). Walking burns rested via the rAF loop; metro/taxi
+   * bypass the loop and never call `drainRested`. The flat-time
+   * advance is also load-bearing: a metro ride from the airport
+   * always takes 20 game-min regardless of distance, matching the
+   * IRL "metro is fast and consistent" experience.
+   *
+   * The function mirrors `handleTravelTo`'s shape (snap-to-peek →
+   * fit-bounds → travel → snap-back-to-half), but with mode-specific
+   * timing + the up-front charge + the synchronous game-time advance
+   * AT THE START rather than via the rAF loop. Per the brief: the
+   * real-time animation is short (~3s metro, ~1s taxi) so the player
+   * sees the wallet decrement land + the avatar arrive without a
+   * lengthy beat.
+   */
+  const handleTransitTo = useCallback(
+    async (poi: Doc<"pois">, mode: Exclude<TransitMode, "walk">) => {
+      const cost = TRANSIT_COST_CENTS[mode];
+      const walletCents =
+        usePlayerStore.getState().walletEurosCentsInternal;
+      // Defense-in-depth: the drawer's button is disabled when
+      // unaffordable, but a programmatic invocation (e2e seam, a
+      // future a11y power-tool) shouldn't be able to trigger
+      // `chargeWallet` and have it throw. Same posture as the
+      // hostel-sleep handler.
+      if (!canAfford(walletCents, cost)) return;
+
+      const map = mapRef.current;
+      const destination: LngLat = { lng: poi.lng, lat: poi.lat };
+
+      // Charge UP FRONT, synchronously. Same discipline as hostel
+      // sleep: the player taps, they read the cost, the money's gone.
+      usePlayerStore.getState().chargeWallet(cost);
+
+      // Synchronous game-time advance — flat per mode (per ADR-007).
+      // Done BEFORE the visual animation so the clock chip's tick
+      // lands as part of the "I just rode the metro" beat. The avatar
+      // marker's traveling pulse + dotted line provide the visual
+      // motion. Crucially we do NOT drain rested here — paid transit
+      // is rest-neutral by construction.
+      useGameClockStore
+        .getState()
+        .advance(TRANSIT_GAME_MINUTES_FLAT[mode]);
+
+      // 1a. Camera fits both endpoints (same shape as walk).
+      if (map) {
+        const bounds = boundsForFit([avatar, destination]);
+        const height = map.getContainer().clientHeight;
+        map.fitBounds(bounds, {
+          padding: {
+            top: TRAVEL_FIT_TOP_PADDING,
+            right: TRAVEL_FIT_HORIZONTAL_PADDING,
+            bottom: Math.round(height * TRAVEL_FIT_BOTTOM_FRACTION),
+            left: TRAVEL_FIT_HORIZONTAL_PADDING,
+          },
+          duration: reducedMotion ? 0 : TRAVEL_FIT_DURATION_MS,
+          essential: false,
+        });
+      }
+
+      if (!reducedMotion) {
+        // 1b. Snap drawer to peek.
+        setActiveSnapPoint(SNAP_POINTS[0]);
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, SNAP_TO_PEEK_DELAY_MS),
+        );
+      }
+
+      // 2. Run a short fast-travel animation. We re-use
+      //    `fastTravelTo` BUT with a mode-specific override of the
+      //    real-time duration: the existing function computes
+      //    duration from `travelDurationMs(distKm)` for walk, which
+      //    would be wrong for metro/taxi (the metro is the same speed
+      //    regardless of distance). Rather than threading a mode
+      //    parameter into `fastTravelTo`, we run a parallel inline
+      //    animation using the same bearing + lerp shape but with the
+      //    mode-specific `TRANSIT_REAL_DURATION_MS`. This keeps
+      //    `fastTravelTo` focused on the walk path; the divergence
+      //    here is small enough that fork-vs-extract is a wash, and
+      //    the inline path is the one with the explicit "no per-
+      //    minute drain" property that paid transit needs.
+      const start: LngLat = { ...avatar };
+      const bearing = bearingDeg(start, destination);
+      const gen = ++travelGenRef.current;
+      const isCurrent = () => travelGenRef.current === gen;
+
+      setFacing(bearing);
+      const durationMs = TRANSIT_REAL_DURATION_MS[mode];
+
+      if (reducedMotion) {
+        // Reduced-motion: jump-cut. The clock has already advanced.
+        // Briefly flash traveling so the avatar's traveling-state is
+        // reachable, then settle.
+        setTraveling(true);
+        setAvatar(destination);
+        await new Promise<void>((resolve) =>
+          setTimeout(() => {
+            if (isCurrent()) setTraveling(false);
+            resolve();
+          }, 200),
+        );
+      } else {
+        // Smooth-time path: trail + lerp. No rAF clock loop — the
+        // clock has already ticked synchronously, and we DELIBERATELY
+        // do not call `drainRested` here. That's the rest-neutrality
+        // contract.
+        setTrail({ start, end: destination, opacity: 1 });
+        setTraveling(true);
+        await animate(0, 1, {
+          duration: durationMs / 1000,
+          ease: "easeOut",
+          onUpdate: (t) => {
+            if (!isCurrent()) return;
+            setAvatar({
+              lng: lerp(start.lng, destination.lng, t),
+              lat: lerp(start.lat, destination.lat, t),
+            });
+          },
+        });
+        if (!isCurrent()) return;
+        setTraveling(false);
+        await animate(1, 0, {
+          duration: TRAIL_FADE_OUT_MS / 1000,
+          ease: "easeOut",
+          onUpdate: (o) => {
+            if (!isCurrent()) return;
+            setTrail((prev) => (prev ? { ...prev, opacity: o } : prev));
+          },
+        });
+        if (!isCurrent()) return;
+        setTrail(null);
+      }
+
+      // 3. Mark arrival. Persist to the world-position store so the
+      //    avatar resumes here across sibling-route navs (mini-game).
+      setCurrentPoiSlug(poi.slug);
+      useWorldPositionStore.getState().setArrival(poi.slug, {
+        lng: poi.lng,
+        lat: poi.lat,
+      });
+      if (!reducedMotion) {
+        setActiveSnapPoint(DEFAULT_SNAP);
+      }
+    },
+    [avatar, reducedMotion],
   );
 
   /**
@@ -958,14 +1339,185 @@ export function LisbonMap() {
 
   const handleLinger = useCallback(() => {
     if (!selectedPoi) return;
-    const verb = lingerVerbFor(selectedPoi.type, epochMinute);
-    if (!verb.enabled || verb.quantum <= 0) return;
+    const verb = lingerVerbFor(selectedPoi, epochMinute);
+    if (!verb.enabled) return;
     if (lingeringRef.current) return; // re-entrancy guard
+
+    // **M2 PR7 (per ADR-009):** route-based verb. The verb hands off
+    // to a full-screen mini-game route (azulejo at the Mercado da
+    // Ribeira) rather than running a linger advance. The mini-game
+    // owns its own time + state; this handler is a pure dispatcher.
+    //
+    // Per AGENTS.md §6.3 ("mini-games: full-screen takeover"): the
+    // route navigation is the takeover. The drawer remains in the
+    // background-history state while the player works the panel; the
+    // mini-game's leave button (or completion) routes back to /lisbon
+    // and the drawer reopens at the Mercado da Ribeira marker via
+    // the existing selectedPoi state.
+    if (verb.route) {
+      router.push(verb.route);
+      return;
+    }
+
+    // **M2 PR8 — busking branch.** When the verb is the busking
+    // verb (Largo do Carmo's `square` POI), we run the `square`-
+    // specific completion path:
+    //   1. Run the rAF loop for the session-game-minutes (clock
+    //      advances naturally — busking is "spent time" the same
+    //      way other lingers are).
+    //   2. On completion: pick the RNG payout, credit the wallet,
+    //      drain rested by 0.02, set the inline message.
+    //   3. After BUSKING_MESSAGE_HOLD_MS: clear the message and snap
+    //      the drawer back to half so the player can choose to
+    //      re-tap or leave.
+    //
+    // Crucially, busking is wallet-independent: there is no `cost`
+    // gate. The §5.2 safety-net contract says "going to zero is not
+    // a fail state — there's always a busking option."
+    //
+    // Reduced-motion path: jump-cut the advance synchronously, set
+    // the message immediately, schedule the message-clear with a
+    // setTimeout (no rAF loop, no spinner). Skipping the auto-snap-
+    // back under reduced-motion (per §6.5: minimum motion).
+    if (verb.kind === "busking") {
+      const payout = pickBuskingPayout();
+      const message = buskingMessageForCents(payout);
+
+      if (reducedMotion) {
+        // Jump-cut: advance the clock + drain rested + credit wallet
+        // synchronously. No spinner, no rAF loop. The message holds
+        // for BUSKING_MESSAGE_HOLD_MS then clears.
+        useGameClockStore.getState().advance(verb.quantum);
+        usePlayerStore.getState().drainRested(BUSKING_RESTED_DRAIN);
+        usePlayerStore.getState().creditWallet(payout);
+        setBuskingMessage(message);
+        const gen = ++buskingMessageGenRef.current;
+        setTimeout(() => {
+          // Only clear if this is still the current session — a
+          // newer busking tap would have bumped the gen counter.
+          if (buskingMessageGenRef.current === gen) {
+            setBuskingMessage(null);
+          }
+        }, BUSKING_MESSAGE_HOLD_MS);
+        return;
+      }
+
+      // Smooth-time path. Same rAF helper as PR4-PR7 lingers; the
+      // mutations on completion are the busking shape (credit + flat
+      // rested-drain). The per-minute drain that other lingers apply
+      // (1/1440 per minute) is INTENTIONALLY OMITTED here — busking
+      // is gentler-on-body than walking (per the synthesis README's
+      // calibration table), and the 0.02 flat session-drain is the
+      // canonical spec from ADR-008. Adding the per-minute drain on
+      // top would make busking drain rested at ~3% per session,
+      // breaking the "gentler than mini-game (0.05)" gradient.
+      const quantum = verb.quantum;
+      const realDurationMs = Math.min(
+        LINGER_MAX_REAL_DURATION_MS,
+        (quantum / LINGER_GAME_MINS_PER_REAL_SEC) * 1000,
+      );
+      const rate = quantum / (realDurationMs / 1000);
+
+      setLingering(true);
+
+      startTimedAdvance({
+        rate,
+        onMinuteCommitted: (mins) => {
+          useGameClockStore.getState().advance(mins);
+          // No per-minute rested drain for busking — the flat 0.02
+          // session-drain at completion is the spec'd shape.
+        },
+        totalMinutes: quantum,
+        onComplete: () => {
+          setLingering(false);
+          // Credit + drain at the natural completion point. Wallet
+          // chip's `data-cents` pulse seam (PR5) catches the income
+          // immediately. Rested drains by the flat 0.02 per ADR-008.
+          usePlayerStore.getState().creditWallet(payout);
+          usePlayerStore.getState().drainRested(BUSKING_RESTED_DRAIN);
+          setBuskingMessage(message);
+          const gen = ++buskingMessageGenRef.current;
+          setTimeout(() => {
+            // Only clear if this is still the current session.
+            // A fast re-tap during the hold window would have
+            // bumped the gen counter and is responsible for its
+            // own message lifecycle.
+            if (buskingMessageGenRef.current !== gen) return;
+            setBuskingMessage(null);
+            // Auto-collapse to the half snap so the busking-active
+            // pose doesn't linger after the message clears. The
+            // player can choose to busk again (the verb is still
+            // visible at the half snap) or close the drawer.
+            // Don't fight the player if they've manually dragged to
+            // peek mid-message: only re-snap if we're still at full
+            // (the snap-up state from completion).
+            setActiveSnapPoint((prev) =>
+              prev === SNAP_POINTS[2] ? DEFAULT_SNAP : prev,
+            );
+          }, BUSKING_MESSAGE_HOLD_MS);
+        },
+      });
+      return;
+    }
+
+    // Non-route verbs require a positive quantum (advance amount).
+    if (verb.quantum <= 0) return;
+
+    // **M2 PR4 (per ADR-007):** affordability gate for cost-bearing
+    // linger verbs (the hostel's "Sleep until morning" at €18 in M2).
+    // The drawer's button is already disabled when unaffordable, but
+    // we re-check here as a defense-in-depth: a programmatic invoke
+    // (a future settings shortcut, an a11y power-tool, an e2e test
+    // with a stale render) shouldn't be able to trigger
+    // `chargeWallet` and have it throw. The store's `chargeWallet`
+    // mutator throws on insufficient funds (per ADR-007's boundary
+    // defense); double-gating means we never hit that throw under
+    // normal flows.
+    const verbCost = verb.cost ?? 0;
+    if (verbCost > 0) {
+      const walletCents =
+        usePlayerStore.getState().walletEurosCentsInternal;
+      if (!canAfford(walletCents, verbCost)) return;
+      // Charge UP FRONT, synchronously. PR2's hand-off note for PR4
+      // prescribes this exact sequence: charge → advance → restore.
+      // The player's wallet drops the moment they tap the button;
+      // they read the cost, they tap, the money's gone. Edge case:
+      // if the rAF loop is interrupted mid-advance (page unmount,
+      // navigation), the charge stays but the rested-restore
+      // doesn't fire. Per the brief: cozy framing — "you chose to
+      // sleep and walked away from your phone; no refund."
+      usePlayerStore.getState().chargeWallet(verbCost);
+    }
+
+    // **Hostel sleep restore (M2 PR4, per ADR-008):** capture the
+    // "is this hostel?" check at dispatch time, not in the loop's
+    // closure — the selectedPoi could in principle change while the
+    // loop runs (it doesn't today, the drawer guards against it,
+    // but capturing the flag here makes the future-proofing free).
+    // The restore fires at the natural end of the loop's commit
+    // path, AFTER the final `advance`. Net effect with the per-
+    // minute drain: rested = 1.0 at end (the per-minute drain is
+    // overwritten by the clean reset). ADR-008's "sleep is a clean
+    // reset" semantic.
+    const isHostelSleep = selectedPoi.type === "hostel";
 
     // Reduced-motion: jump-cut the advance, no rAF loop, no visible
     // ticking. The player has explicitly opted out of motion.
     if (reducedMotion) {
       useGameClockStore.getState().advance(verb.quantum);
+      // **M2 PR4 (per ADR-008):** mirror the awake-time rested drain
+      // for the reduced-motion jump-cut path. The hostel's sleep
+      // restore overwrites this immediately below; the drain is
+      // observable for non-cost lingers only (transit/view/sight/
+      // market — none of which set cost in M2 but their rested
+      // drain still applies).
+      usePlayerStore.getState().drainRested(verb.quantum / 1440);
+      if (isHostelSleep) {
+        // Sleep is a clean reset to 1.0 regardless of partial-sleep
+        // duration (per ADR-008). The drain we just applied is
+        // overwritten by this restore.
+        usePlayerStore.getState().restoreRested();
+      }
       return;
     }
 
@@ -978,52 +1530,52 @@ export function LisbonMap() {
 
     setLingering(true);
 
-    let rafId: number | null = null;
-    let lastFrameTime: number | null = null;
-    let accumulatedMins = 0;
-    let committedMins = 0;
-
-    const tick = (now: number) => {
-      // Cancellation: if the drawer closes mid-linger or the page is
-      // closed, the lingering state is reset to false and we bail.
-      // The committed minutes stay (no rollback); the remainder is
-      // dropped.
-      if (!lingeringRef.current) {
-        rafId = null;
-        return;
-      }
-      if (committedMins >= quantum) {
-        rafId = null;
+    // The rAF + accumulator + `document.hidden` gate is owned by
+    // `startTimedAdvance` (M2 PR6, per ADR-005's Consequences
+    // amendment). Store mutations stay here: the linger path drains
+    // rested per-minute (PR4); the hostel-sleep completion restore
+    // overwrites that drain (per ADR-008). Future linger consumers
+    // (museum/tasca without restore; mini-game in PR7 with a flat
+    // session drain; busking in PR8 with its own drain shape) wire
+    // different mutation sets here without forking the helper.
+    //
+    // **No cancellation handle is stashed.** The user can't currently
+    // cancel a linger mid-advance — the drawer is at peek and the
+    // only interactive surface during the loop is the recenter
+    // button, which doesn't cancel. If a future M3 PR introduces
+    // cancellation (e.g., closing the drawer mid-sleep), stash the
+    // handle in a ref and call `cancel()` there. For PR6's
+    // pure-refactor scope, completion is the only exit path and
+    // `onComplete` carries the post-loop work the pre-extraction
+    // code did inside the cap branch.
+    startTimedAdvance({
+      rate,
+      onMinuteCommitted: (mins) => {
+        useGameClockStore.getState().advance(mins);
+        // **M2 PR4 (per ADR-008):** awake-time rested drain at
+        // 1/1440 per game-minute, mirroring the travel rAF loop.
+        // For hostel sleep the per-minute drain is invisible — the
+        // `restoreRested()` call at completion overwrites it. For
+        // future cost-bearing lingers without a restore (a museum
+        // entry, a meal at a tasca), the drain accumulates honestly.
+        usePlayerStore.getState().drainRested(mins / 1440);
+      },
+      totalMinutes: quantum,
+      onComplete: () => {
         setLingering(false);
-        return;
-      }
-      if (typeof document !== "undefined" && document.hidden) {
-        // Background pause — same semantic as the travel rAF loop.
-        // The world waits; we don't catch up real-time elapsed.
-        lastFrameTime = null;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      if (lastFrameTime === null) {
-        lastFrameTime = now;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      const deltaSec = (now - lastFrameTime) / 1000;
-      lastFrameTime = now;
-      accumulatedMins += deltaSec * rate;
-      if (accumulatedMins >= 1) {
-        let wholeMins = Math.floor(accumulatedMins);
-        const remaining = quantum - committedMins;
-        if (wholeMins > remaining) wholeMins = remaining;
-        accumulatedMins -= wholeMins;
-        committedMins += wholeMins;
-        useGameClockStore.getState().advance(wholeMins);
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
+        // **Hostel sleep completion (M2 PR4, per ADR-008):** restore
+        // rested to 1.0 on natural completion. The per-minute drain
+        // applied during the loop is overwritten — net effect is
+        // rested = 1.0 at end of sleep, regardless of how long the
+        // sleep was. Other linger types (mini-game in PR7 at 0.05
+        // flat; busking in PR8 at 0.02 flat) handle their own
+        // session-completion drains in those PRs; PR4 only does the
+        // hostel restore.
+        if (isHostelSleep) {
+          usePlayerStore.getState().restoreRested();
+        }
+      },
+    });
   }, [selectedPoi, epochMinute, reducedMotion]);
 
   /**
@@ -1361,7 +1913,22 @@ export function LisbonMap() {
             // react-map-gl to the underlying maplibre Marker element
             // and creates a deterministic stacking context above the
             // POI markers (default zIndex: auto).
-            style={{ zIndex: 10 }}
+            //
+            // pointerEvents: "none" so taps pass THROUGH the avatar
+            // wrapper to whatever sits underneath (the POI marker when
+            // the avatar is at a POI; the map otherwise). The inner
+            // <AvatarMarker> already has `pointer-events-none`, but
+            // react-map-gl's <Marker> wrapper renders a
+            // `.maplibregl-marker` div with default pointer-events
+            // behavior — without this, the wrapper intercepts taps and
+            // the POI marker the avatar sits on top of becomes
+            // unclickable. The avatar is non-interactive by design
+            // (recentering happens via <RecenterButton>, not by
+            // tapping the avatar), so passing through is the right
+            // semantic. Real-phone testing surfaced this after the
+            // z-index lift made the wrapper into an effective click-
+            // shield for the POI underneath.
+            style={{ zIndex: 10, pointerEvents: "none" }}
           >
             <AvatarMarker traveling={traveling} facing={facing} />
           </Marker>
@@ -1376,6 +1943,34 @@ export function LisbonMap() {
        * the cozy slot-reel/Fraunces treatment.
        */}
       <TimeOfDayClock />
+
+      {/*
+       * Wallet chip (M2 PR5). Top-left chip-row sibling of the clock,
+       * offset right past the clock pill. Subscribes to
+       * `usePlayerStore.walletEurosCentsInternal` and renders whole
+       * Euros (rounds down per ADR-007). Same `bg-card` cozy chip
+       * family as the clock — same shadow, ring, height — so the two
+       * pills read as paired chrome. Always visible; the wallet exists
+       * regardless of in-game state.
+       */}
+      <WalletChip />
+
+      {/*
+       * Tired chip (M2 PR5, ADR-008). Renders only when
+       * `restedBand(rested) === "tired"` — i.e. continuous rested
+       * dropped below 0.33. Fades in/out at the band boundary. Tap
+       * fires an inline toast with the placeholder copy "You should
+       * sleep soon" (Narrative Designer polishes wording in M3).
+       * Adds chrome only when needed; vanishes when the player sleeps
+       * and rested resets.
+       *
+       * Sits on a *second row* below the clock+wallet pair (the 390px
+       * iPhone budget is too tight for three chips side-by-side once
+       * the recenter button claims the right edge). Tired chip falls
+       * out of the chrome above when relevant, reads as cozy chip-row
+       * stack rather than competing for inches.
+       */}
+      <TiredChip />
 
       {/*
        * Recenter button (§7.1 "tap 'recenter' to return"). Top-right,
@@ -1442,6 +2037,12 @@ export function LisbonMap() {
           if (!open) {
             setSelectedPoi(null);
             setActiveSnapPoint(null);
+            // **M2 PR8:** clear any stale busking message on close so
+            // the next reopen of any POI starts clean. Bump the gen
+            // counter so a pending message-hold setTimeout doesn't
+            // try to setActiveSnapPoint after the drawer is gone.
+            setBuskingMessage(null);
+            buskingMessageGenRef.current++;
           }
         }}
         onSnapChange={handleSnapChange}
@@ -1452,17 +2053,62 @@ export function LisbonMap() {
         onTravel={
           selectedPoi ? () => void handleTravelTo(selectedPoi) : undefined
         }
+        // **M2 PR8 — transit modes.** Compute per ADR-007's display
+        // rules from the avatar→POI distance. Walk-only on short
+        // hops, walk+metro on mid distances, walk+metro+taxi on
+        // airport-distance legs. When isAtPoi is true the drawer
+        // disables all transit (You're-here state).
+        transitModes={
+          selectedPoi
+            ? transitModesForLegPoints(avatar, {
+                lng: selectedPoi.lng,
+                lat: selectedPoi.lat,
+              })
+            : undefined
+        }
+        onTransit={
+          selectedPoi
+            ? (mode) => void handleTransitTo(selectedPoi, mode)
+            : undefined
+        }
+        // **M2 PR8 — soft-refusal deep-link.** Tapping a disabled
+        // cost-bearing button (hostel sleep when broke, metro/taxi
+        // when broke) opens the Largo do Carmo drawer so the player
+        // can busk for spare change. Per ADR-007's safety-net
+        // contract.
+        onSoftRefusal={handleSoftRefusal}
+        // **M2 PR8 — description-once-per-session.** GD's tuning
+        // rule: the prose renders once at peek-snap on the first
+        // session-tap of a POI; subsequent same-session taps go
+        // straight to the linger-verb action area. The flag is set
+        // by `handlePoiSelect` from a snapshot of the seen-ref taken
+        // before the ref-add, so the first tap of a slug renders
+        // with `shouldShowDescription === true` and subsequent taps
+        // render with `false`.
+        showDescription={shouldShowDescription}
         // Linger verb (M1 PR5). Computed from the selected POI's type +
         // current game-clock value. Per ADR-005 the verb is a pure
         // derivation, recomputed every render — cheap, no memoization
         // needed for 5 POIs and a handful of branches.
+        //
+        // M2 PR7: when the selected POI is the Mercado da Ribeira AND
+        // the player has an in-progress azulejo session, the verb
+        // label flips to "Continue your panel" and the payout suffix
+        // is dropped (the panel is already in flight; payout lands on
+        // completion). Keeps `lingerVerbFor` a pure function — the
+        // override is a per-render adjustment at the consumer site.
         lingerVerb={
           selectedPoi
-            ? lingerVerbFor(selectedPoi.type, epochMinute)
+            ? overrideForAzulejoInProgress(
+                lingerVerbFor(selectedPoi, epochMinute),
+                selectedPoi,
+                azulejoInProgress !== null,
+              )
             : undefined
         }
         onLinger={handleLinger}
         lingering={lingering}
+        buskingMessage={buskingMessage}
       />
     </main>
   );

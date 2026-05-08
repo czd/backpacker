@@ -1,0 +1,43 @@
+name: Bundle size
+
+# DECISIONS.md ADR-004: per-route JS bundle ceilings (gzipped, First Load JS).
+# Methodology: glob-based @size-limit/file pinned in `.size-limit.cjs`.
+# Failures here block merge; ceiling values come from ADR-004's table.
+#
+# This is the JS-bytes early-warning signal. The user-experience budgets
+# (TTI, LCP, Lighthouse) live in `.github/workflows/lighthouse.yml` and run
+# against Vercel preview deployments — they're the actual gate. This workflow
+# catches regressions earlier (in PR build, before deploy) so they don't
+# escape into the LHCI signal.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  size-limit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        # The webpack build is what produces `.next/static/chunks/`. The
+        # methodology in `.size-limit.cjs` matches webpack's filename
+        # convention (dash-separated for static, period-separated for lazy);
+        # if the build mode is ever switched (e.g. to turbopack), revisit
+        # the methodology before relying on these numbers.
+        run: bun run build
+
+      - name: Check per-route JS budgets
+        run: bun run size-limit

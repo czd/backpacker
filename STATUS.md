@@ -4,6 +4,342 @@ Living document. Updated at the end of every session per AGENTS.md §14.10. Form
 
 ---
 
+## 2026-05-05 — M2 PR7 azulejo mini-game shipped + real-phone verified
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`, **17 commits ahead of origin** (not yet pushed). PR1–PR7 shipped. **PR8 (busking POI + paid transit) is the only remaining M2 deliverable.**
+
+### Done this session
+**PR7 implementation (4 FD commits, ~3,272 lines):**
+- `1067022` `feat(m2/azulejo): scaffold tokens, panel data, persistence store`
+- `8f7cff7` `feat(m2/azulejo): tile + panel + tray + shell components`
+- `17c1f86` `feat(m2/azulejo): wire mini-game route + Mercado da Ribeira hand-off`
+- `6720fad` `test(m2/azulejo): playwright e2e at 390×844 + 360×640 reflow`
+
+**PR7 fixup train (8 commits, real-phone-driven):**
+- `3b44e49` `fix(m2/azulejo): two real-phone bugs — spring keyframes + drag y-fight` — Framer Motion forbids 3-keyframe arrays under `type: "spring"`; lift variant's `y: -40` thumb-offset fought the drag handler on the same axis. Dropped both; the spring's natural underdamped overshoot still delivers the rubber-stamp bounce.
+- `e51e1b1` `fix(m2/azulejo): three real-phone bugs — placed-tile rendering + completion flow` — `tile-panel.tsx` used 1-indexed `rowColOfSlot()` output as 0-indexed in the translate math (slots 11, 13 went blank; slots 2, 4 showed wrong fragments). Completion path cleared `inProgress` synchronously, hiding the success stamp via the `inProgress`-guarded layout. `completedRef` wasn't reset across sessions. Fixed all three: split `completeSession` into `markFirstSessionCompleted` + delayed `clearInProgress`; reset ref in beginSession effect.
+- `1d4f4a8` `fix(m2/azulejo): self-heal stale "already-complete" persisted state` — players with the pre-fix completion bug had a complete-but-not-cleared `inProgress` in localStorage; on entry the completion useEffect re-fired forever. Added a stale-state guard.
+- `ba508eb` `fix(m2/azulejo): pickup note text invisible in dark mode` — note paper hardcoded warm-cream `#F4ECD6`, but text used `var(--foreground)` which inverts in dark mode → light-on-cream invisibility. Hardcoded ink to `#3A2C1E` warm dark-brown to match the paper's theme-stable register. (The note is a physical object; the paper and the ink should both be theme-independent.)
+- `003c06f` `fix(m2): persist avatar position across sibling-route nav` — `lisbon-map.tsx` held `currentPoiSlug` + avatar lng/lat in component-local `useState`; on route nav back from the mini-game, React re-ran the initializers and teleported the player to the airport. New `useWorldPositionStore` (Zustand + persist middleware → localStorage) holds position; the map reads from it on first render and writes through `setArrival()` on each fast-travel completion.
+- `b98d0a8` `fix(m2): persist wallet/rested + game-clock through HMR resets` — added `persist` middleware to `usePlayerStore` and `useGameClockStore` (mirroring `azulejo-store` and the new `world-position-store`). Was the load-bearing fix that closed the wallet-stays-€25 regression: dev-mode HMR re-imports modules on every commit, silently re-instantiating module-singleton stores with their defaults. Persistence makes them immune to HMR + route cache + reloads.
+- `cac41eb` `fix(m2/azulejo): self-heal misfired during normal completion` — the stale-state guard from `1d4f4a8` fired on EVERY render where `inProgress` was complete, including the moment a player drops the 4th tile. Effect-execution order made the guard run before the completion useEffect, blocking the real payout. Gated the guard on a `justMountedRef` so it only fires on first render.
+
+**Owner real-phone verification (2026-05-05):** complete-puzzle → see stamp → 1.5s hold → nav back to map → wallet went €25 → €40. Re-entered, completed, €40 → €55. Position preserved (avatar stays at Mercado, no airport teleport). Time correctly frozen during the puzzle, advances only on walks. Persistence holds across hard reload after `localStorage.clear()`.
+
+**M2 PR7 Definition of Done verification:**
+- ✓ One mini-game (Lisbon azulejo tile-matching, plain React + Framer Motion + drag)
+- ✓ Drag (not click), thumb-friendly
+- ✓ Pays €15 on completion; failing costs nothing (per ADR-009)
+- ✓ Playable at 360×640, no horizontal scroll
+- ✓ Vitest **364/364** passing (was 324; +40); Playwright **10/10** new e2e + 47/48 full suite (1 pre-existing flake unrelated to PR7)
+- ✓ size-limit: `/lisbon/jobs/*` at **190.76 KB / 350 KB** ceiling (55%)
+- ✓ TypeScript clean
+- ✓ Cultural-content reviewed by Anthropologist + Historian (verbatim in `research/lisbon/azulejo-mini-game/`)
+- ✓ Visual reviewed by UI Designer (verbatim spec at `research/lisbon/azulejo-mini-game/ui-designer-2026-05-04.md`)
+- ✓ Real-phone verified by owner
+
+### PR7-followup queue (deferred, not blocking M2 close)
+
+The FD flagged three followup items in their report; carrying forward:
+1. **Drag-to-complete e2e automation** — Framer Motion drag is brittle in headless Playwright. FD recommends a `__azulejoDebug` window seam (mirrors `__player` + `__gameClock`) so e2e can drive completions deterministically. Would also unlock the 3-real-min soft-break drawer e2e (currently impossible to test without waiting 3 minutes).
+2. **3-min soft-break drawer e2e** — same shape as #1.
+3. **Polychrome wear visual review** — UI Designer's spec was authored before final reference imagery; FD's SVG interpretation of Panel 2 should be re-reviewed by UI Designer + Anthropologist before M2 close-out, especially the antimony-pale-vs-saffron call (the load-bearing §9.3 line).
+4. **40px thumb-occlusion offset** — UI Designer's spec'd thumb-offset is deferred to M5 polish via a controls-based imperative offset that doesn't conflict with `drag.y`. The dragged tile sits *under* the thumb during drag; the lift shadow + scale + rotation still telegraph "this is being held" but it's a small UX regression vs the spec.
+
+### Next: PR8 academic discovery complete (4 owner picks before GD review + FD dispatch)
+
+**Three-agent parallel dispatch landed 2026-05-05.** All verbatim reports captured at `research/lisbon/largo-do-carmo/` per the §12.7 discipline; synthesis README distills the decisions for owner; bibliography consolidated.
+
+**Locked from this discovery:**
+- **POI: Largo do Carmo confirmed** by all three agents independently. Anthropologist verifies it as a real Lisboeta busking site (CML license framework + Cape Verdean *cavaquinho* cohort + acoustic geometry); Historian confirms the dual 1755 + 1974 memorial layers (the Convento do Carmo's roofless Gothic skeleton + the Quartel do Carmo where Caetano surrendered to the MFA on 25 April 1974); Geographer confirms the spatial fit (centroid pivot of the M1 cluster, 240m N of hostel — borderline marker overlap but tolerable, no cluster-footprint expansion).
+- **Coordinates:** `lat: 38.71182, lng: -9.14055` (praça center / Chafariz do Carmo). Anchors both the 1389/1755 layer (Igreja do Carmo NE) and the 1974 layer (GNR HQ S) without privileging either. 5dp precision matches M1 seed style.
+- **Linger verb:** *"Play for spare change"* (Anthropologist's pick over the brainstorm's *"Busk"* — *busk* is an Anglo verb that doesn't translate cleanly).
+- **Payout:** random draw from `[150, 180, 200, 220, 250, 270, 300]` cents → €1.50–€3.00, mean ~€2.20. **All payouts succeed (no €0 outcomes — preserves §5.2 safety-net contract).** Mini-game pays 6.5× a busking session — the right gradient.
+- **Rested drain:** 0.02 flat per session per ADR-008.
+- **Success-message register:** narrator's voice (NOT NPC, NOT carnation-referencing). Three bands: *"A coin or two."* (low) / *"Some change. Better than nothing."* (mid) / *"A few coins. Not bad."* (high).
+- **Cultural anti-patterns (load-bearing — copy verbatim into PR8 description):** No fado (player's repertoire stays unspecified; fado lives in *casas de fado*, not buskers' idiom in central Lisbon). No "faded grandeur" / "melancholy beauty" / "decadent charm" / "saudade-untranslatable" vocabulary. No editorializing the carnations (description names them; M3 dialogue explains them).
+
+**4 owner picks before FD dispatch:**
+
+1. **Open-hours window: 06:00–22:00 vs 10:00–22:00.** Geographer + brainstorm say the conservative envelope (06:00–22:00, matches existing test cases); Anthropologist says the honest Lisboeta convention is 10:00–22:00 (cafés don't open until ~08:00; first morning busker at ~10:00). Both are one-line config changes.
+2. **POI type: new `square` type vs reuse `view`.** Both Anthropologist and Geographer recommend introducing a new `square` type (a *praça/largo* is a node of urban life — neither viewpoint nor destination; future-proofs Largo de São Domingos / Praça do Comércio / Tokyo *hiroba* / Marrakech *jemaa*). Geographer's fallback is `view` if FD judges schema bloat. **Avoid `sight`** for register reasons.
+3. **Description: Anthropologist Draft 1 vs Historian Candidate B.** Both ~30–40 words, both in M1-PR1 cadence, both cozy-anti-trivia. Difference: Historian Candidate B names "All Saints' Day 1755" explicitly; Anthropologist Draft 1 lets the ruin be there without dating it. Owner pick by which voice feels more "Lisboeta as the world's narrator."
+4. **Colonial-legacy ADR (§15) trigger:** hold "before Belém" (Historian) vs advance to "before M3 closes" (Anthropologist). Historian: §15 wording is Belém-specific; PR8's decolonization-naming is the *antidote* to Belém's empire-celebration register, not its equivalent. Anthropologist: M3 busker NPC (Cape Verdean Lisboeta carrying the *retornados* arc) needs the ADR's framing. Both agents agree PR8 itself ships without the ADR; the disagreement is on when it must be written.
+
+**Cross-cutting flags surfaced (carry forward):**
+- **Cape Verdean Lisboeta busker NPC at Largo do Carmo, M3.** Closes (partially) the M1 PR1 Africanness flag. Verbatim dialogue hooks in both reports.
+- **`travelDurationMs` elevation factor** — Mercado→Carmo is under-honest by ~30–40% (716m + 45m climb). Hook already designed in `app/lisbon/geo.ts`; carry as M2-close-out fixup or M5 polish, not PR8 prerequisite.
+- **Hillshade / 3D-tilt map style** — M1 PR1 flagged; PR8 reinforces. M5 polish.
+- **Elevador de Santa Justa as future M3+ POI candidate** — strong case (iconic 1900–1902 iron lattice, Mesnier de Ponsard not Eiffel-apprentice).
+- **Plaque-text verification flag for FD** — both agents flagged: do NOT quote plaque text without Mapillary/Wikimedia verification. No standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one.
+
+**Game Designer weigh-in landed 2026-05-06.** Verbatim at `research/lisbon/largo-do-carmo/game-designer-2026-05-06.md`. GD is opinionated; the votes (in their team-lead-priority order Hours > Description > ADR > Type):
+
+- **Pick 1 — Hours: 06:00–22:00** (Geographer's pick). §5.2 safety-net contract trumps cultural-authenticity precision when they conflict. The 60% increase in "the game is making me wait" felt-time at 10:00 is a real cost for the brokenest-of-broke player at 23:30. Lisboeta cohort-rhythm lands at M3 in the busker NPC's presence-window (Anthropologist already proposed 11:00–20:00 for the NPC), not in a hard verb gate.
+- **Pick 3 — Description: Historian Candidate B.** Re-readability on visit 5 is the deciding lens. *"All Saints' Day 1755"* + *"fresher than they should be"* both load with each visit; Anthropologist Draft 1 reads cleanly visit 1 but as inventory by visit 5. Plus FD tuning note: render description once at peek-snap on first tap of a session, subsequent same-session taps skip to the linger verb.
+- **Pick 4 — §15 ADR: hold "before Belém"** (Historian's pick) + add a one-line clarification: M3 dispatches that touch decolonization personally proceed without the ADR; M3 dispatches that require empire-structural framing trigger the write-up.
+- **Pick 2 — POI type: new `square` type.** The deciding argument is mechanic-gating, not future-pattern leverage. `linger-verbs.ts`'s `switch (poi.type)` is the load-bearing pattern; reusing `view` would mean Miradouro de Santa Catarina inherits busking — which Anthropologist Topic A explicitly rejects. Use English string `"square"` (not `"praça"`) per the cross-cultural convention `"market"` and `"view"` already follow.
+
+**GD also validated Anthropologist's locked economic numbers:** payout band €1.50–€3.00 random across 7 values (confirm + flag grind risk for owner playtest); no-€0 outcomes (agree, €1.50 floor IS the §5.2 contract); random vs flat (random; mirrors ADR-008 internal-continuous/external-discrete pattern); 0.02 rested drain (confirm).
+
+**GD process / codification recommendations (outside PR8 scope, before M3 dispatches):**
+- **Codify no-fado-in-busking rule as an extension to ADR-003** (already governs naming/cultural conventions). Load-bearing across multiple future Narrative Designer dispatches; should not live only in `research/`.
+- **Add plaque-text verification rule to AGENTS.md §9.3:** *"Plaque text and inscription quotes must be verified against current Mapillary or Wikimedia photos before merge."* Prevents invented monuments (notably: there is no standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one).
+
+**GD playtest goal flagged for M2 close-out:** the **PR7→PR8 narrative arc is the project's first playtestable demonstration of pillar #4** ("learning is a side effect of presence") at full power. Player who completes the azulejo mini-game (Estado Novo's azulejo-as-nationalism program at the 1942 airport terminal) AND visits Largo do Carmo (where the regime fell at 17:30 on 25 April 1974) has a coherent picture of "the regime that ran Portugal until 1974" without ever being lectured. Real-phone playtest after PR8 ships.
+
+**All 4 picks locked 2026-05-06 (owner accepted GD's recommendations as-is):**
+1. **Hours: 06:00–22:00** (`{ ranges: [{ open: 360, close: 1320 }] }`)
+2. **POI type: new `square`** (English string, not `praça`)
+3. **Description: Historian Candidate B** (*"Largo do Carmo — plane trees, a Pombaline fountain, and a Gothic church that's been roofless since All Saints' Day 1755. The barracks across the square is a working GNR post; the carnations on the gate are usually fresher than they should be."*)
+4. **§15 ADR trigger: hold "before Belém"** + M3 personal-historical clarification
+
+**Codification landed in the same docs commit:**
+- `DECISIONS.md` ADR-003 extended with "Performer / repertoire conventions" amendment (no-fado-in-busking rule for Lisbon; per-culture-row framework for future cities).
+- `AGENTS.md` §9.3 extended with plaque-text verification rule (prevents invented monuments, e.g., the non-existent Salgueiro Maia statue).
+- `AGENTS.md` §15 extended with colonial-legacy ADR trigger clarification (hold "before Belém" + M3 personal-historical exception).
+
+**Next: dispatch FD for PR8.**
+
+The substrate is in place. FD prompt will reference: `research/lisbon/largo-do-carmo/` (synthesis README + 4 verbatim agent reports), the locked specs above, and the existing PR7 patterns (`startTimedAdvance` from PR6, `LingerVerb` route + payout fields from PR7's Mercado da Ribeira hand-off). Paid-transit (metro + taxi) ships in the same PR per ADR-007. PR8 description tuning note: render description once at peek-snap on first tap of a session; subsequent same-session taps skip to the linger-verb. M4 journal handles re-encounter.
+
+**Paid-transit calibration (still from ADR-007, unchanged by PR8 discovery):**
+- Metro: ~3s real / 20 game-min / €1.80 / rest-neutral
+- Taxi: ~1s real / 10 game-min / €18 / rest-neutral
+- Walk: free default that drains rested
+- Display rules: short Baixa hops show walk-only; airport-distance legs show walk + metro + taxi
+- The route-based linger-verb pattern from PR7 (`payout` + `route` fields on `LingerVerb`) is reusable.
+
+### Blocked on owner / next decisions
+- **`bunx convex run seed:seedLisbon`** to migrate Convex rows with PR3's `availability` field (still queued from earlier session). Idempotent + patch-only; safe to re-run.
+- **Push to origin?** Branch is 17 commits ahead of `origin/feat/m2-energy-jobs`.
+- **PR8 dispatch order?** Suggest: academic discovery first (Anthropologist + Historian + Geographer in parallel for Largo do Carmo + busking), then GD review of the calibration assumptions before FD ships.
+- **PR7-followup priority** — handle now (small `__azulejoDebug` window seam to unlock e2e), or roll into M2 close-out fixup, or defer to M5?
+
+---
+
+## 2026-05-04 — `research/` pattern + `CREDITS.md` established; PR7 still queued
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`. PR1–PR6 shipped; PR7 (azulejo mini-game) discovery captured; awaiting owner sign-off on master name.
+
+### Done this session
+- **`research/` directory pattern** established. New canonical doc: `research/README.md` defines the structure (`research/<city>/<topic>/` with verbatim agent reports + synthesis README + bibliography). The discipline: **always** capture full academic-agent dispatches verbatim; never summarize away detail. Agents (and future-you) read from here when picking up cross-milestone work.
+- **M2 PR7 azulejo discovery captured** under `research/lisbon/azulejo-mini-game/`:
+  - `README.md` — synthesis with all locked decisions (two-panel ship, workshop framing Option 4, pickup line, success stamp), plus the open question on master name
+  - `anthropologist-2026-05-03.md` — verbatim Anthropologist report (panel patterns, workshop framing, language register, apprentice frame, cross-cutting flags)
+  - `historian-2026-05-03.md` — verbatim Historian report (era boundaries, Bernardes-school anchors, Reabilitação Urbana hook, Banco do Azulejo institution, period detail for UI Designer, Pombaline/Estado-Novo/colonial flags)
+  - `bibliography.md` — consolidated Portuguese-language scholarship + Az Infinitum / MatrizNet / MNAz reference URLs
+- **Retroactive `research/lisbon/poi-content-m1/README.md`** — captures the M1 PR1 academic findings as a synthesis pointer (verbatim reports were not preserved at dispatch time; this gap is what the new discipline corrects).
+- **`CREDITS.md`** at repo root — authoritative credit ledger. M2 PR7 azulejo image references (Annie Spratt, Laura, laura adai — all Unsplash-licensed) are logged. Sections for fonts, libraries, audio added as placeholders for future fills. Mirrors `docs/images/pr7-azulejo/sources.md`.
+- **`AGENTS.md` §12.7 + §12.8** — research-capture discipline and credits-ledger discipline added as working agreements. §12.6 "supporting documents" extended.
+- **`CLAUDE.md`** doc set updated to surface `research/` and `CREDITS.md` so future sessions discover them at session start.
+
+### Next: dispatch PR7 FD (3 owner picks first)
+
+**UI Designer pass complete (2026-05-04).** Verbatim spec at `research/lisbon/azulejo-mini-game/ui-designer-2026-05-04.md`; synthesis README updated; bibliography unchanged. The spec is FD's substrate — 16 locked OKLCH palette tokens, two locked tile motifs (*acanthus volute corner* + *ponta de diamante*), motion spec with Framer Motion spring constants + reduced-motion alternatives, screen architecture at 390×844 with 360×640 reflow, reusable-primitive boundaries (`<MiniGameShell />` flagged as the major future-pattern for Tokyo+), Whimsy seams (M5 deferred), test-surface attrs (data-testid + aria).
+
+**3 owner picks locked 2026-05-04:**
+
+1. **Soft-break prompt copy: Option B** — *"Long enough for now. Want to leave it? The tiles will keep."* The owner overrode the UI Designer's Option A recommendation. The terser master-register reads *as Mestra Fernanda* — closer to *Está bom assim*'s clipped voice than the warmer "you've been at this a while" parental register. The aesthetic question — does the master coddle, or does she trust the apprentice with a clipped instruction — landed on the side of trust. M3 Narrative Designer polishes to Portuguese.
+2. **Pickup-note placement: keep** — −3° left-tilt, top-right of panel, leave button top-left.
+3. **Phase-tint backdrop: phase-agnostic** — atelier has its own light; mini-game is "taken-out-of-time" per §5.1. Whimsy seam #6 stays unimplemented at M5.
+
+**Cross-cutting flags surfaced by UI Designer:**
+
+- **Polychrome reference imagery still needs sourcing.** `docs/images/pr7-azulejo/` holds 3 Unsplash blue-and-white photos (Panel 1 substrate). Panel 2 polychrome needs 2–3 references — recommend Wikimedia Commons `Category:Azulejos de tapete` (Madre de Deus lower-cloister) under CC-BY/CC-BY-SA + `CREDITS.md` attribution, or MNAz online via matriznet.dgpc.pt with license verification.
+- **`.size-limit.cjs` `/lisbon/jobs/*` placeholder needs activation at PR7.** Recommended ceiling: **350 KB gzipped** (between splash 300 and world layer 400; mini-game route loads less than full map but more than splash). Per ADR-004 tiered-budget pattern.
+- **ADR-008 rested-band rendering verification.** PR7 is the *first* M2 component to render the three rested bands as motion (snap tolerance 12/10/8, hint pulse 600/800/first-only). FD's vitest suite should assert the three-band cadence as architectural verification of ADR-008's "felt-not-seen" principle.
+- **`<MiniGameShell />` future-pattern callout.** PR7 ships the shell concretely; M5+ Tokyo dispatch lifts it into `lib/mini-game/`. FD should structure with a `// FUTURE-PATTERN: M5+ Tokyo sushi shell parent` comment so the next dispatch finds it cleanly.
+
+### Blocked on owner
+- 3 owner picks above (PR7 FD dispatch ready when locked).
+- `bunx convex run seed:seedLisbon` to migrate Convex rows with PR3's `availability` field (still queued from earlier session).
+
+---
+
+## 2026-05-03 — M2 brainstorm complete; ADRs 007–010 Accepted
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`. Game Designer brainstorm landed; all 14 open questions resolved; four ADRs accepted; ready to dispatch PR1.
+
+### Accepted M2 calibration (per ADRs 007–010)
+
+**Wallet + economy (ADR-007):**
+- Starting wallet: **€25** (single-city M2 calibration; M4 revisit hook captured)
+- Currency display: whole Euros, cents internal, rounds down, floors at €0
+- Hostel night: €18 (restores rested to 1.0)
+- Mini-game pay (azulejo): €15 per session
+- Soft-refusal pattern: when broke, the action button reads `Need €X — try busking?` and deep-links to Largo do Carmo
+- Paid transit (per-leg, no day-pass):
+  - Walk — 4 game-min/real-sec, free, drains rested
+  - Metro — ~3s real / 20 game-min / €1.80 / rest-neutral
+  - Taxi — ~1s real / 10 game-min / €18 / rest-neutral
+- Display rules: short Baixa hops show walk-only (metro overhead doesn't beat walking those distances); airport-distance legs show walk + metro + taxi
+
+**Rested-ness (ADR-008):**
+- Continuous internal `rested` ∈ [0, 1]
+- Three rendered bands: fresh (≥0.66), flagging (0.33–0.66), tired (<0.33)
+- HUD signal: only tired band shows a small Moon icon next to wallet
+- Drain rate: 1/1440 per game-minute of awake time (24h awake → empty)
+- Mini-game effects (felt-not-seen): snap tolerance 12/10/8 px per band; hint pulse 600/800/first-only
+- Avatar pulse cycle: 1.6s/1.8s/2.0s per band (M2 ships data; M5 Whimsy ships visual)
+- Sleep at hostel restores to 1.0 (clean reset)
+
+**Mini-game failure semantics (ADR-009):**
+- Leave-button safe-area top-left, 44pt+
+- No permanent fail state (ever)
+- Soft "take a break?" prompt at 3 real minutes
+- Pattern generalizes to ALL future mini-games (Tokyo sushi, Marrakech spice, etc.)
+- No score, no XP, no streak — pay is the outcome
+
+**Structured POI availability (ADR-010):**
+- Optional `availability` field on Convex `pois` doc with `days` + `ranges` + optional `seasonal`
+- Replaces the hardcoded `ALWAYS_OPEN_TYPES = {transit, view}` placeholder from M1 PR5-fixup-2
+- 24/7 default when field is absent (preserves M1 seed semantics, no migration cost)
+- Castle Mar–Oct (09:00–21:00) vs Nov–Feb (09:00–18:00) honored honestly for the first time
+- Largo do Carmo (M2 PR8): 06:00–22:00 (busking-allowed window per Anthropologist convention review)
+
+### M4 revisit hook (explicit)
+
+Owner explicitly deferred the multi-city travel-arc calibration to M4 prep:
+
+- **The €25 starting wallet, €18 hostel, €15 mini-game pay numbers are calibrated against single-city M2 economy.** They are NOT calibrated against unknown M4 flight costs.
+- **M4 prep brainstorm must re-examine** starting wallet, income rates, flight prices, and any city-specific income/cost gradients (Tokyo more expensive but jobs pay more, etc.) **as a coherent system** rather than tuning any single number in isolation.
+- **Soft-goal "passport circumnavigation"** (AGENTS.md §15 — *"What does 'winning' look like?"*) is the natural M4 brainstorm companion. Wallet calibration and winning-condition shape get decided together at M4 prep.
+- The original 1995 *Backpacker* started high because flight-cost-resource-management was its core mechanic; the cozy version (§3 "the *anti*-version of that") makes different starting choices but only when the destination economy is real.
+
+### Cultural-content review hooks queued for M2
+
+Per AGENTS.md §9.3, must land before the named PR merges:
+
+- **PR4 (hostel sleep + rested-ness):** Anthropologist sanity check on €18 dorm-bed price for the fictional Pensão Estrela do Tejo. Quick non-blocking check.
+- **PR7 (azulejo mini-game):** Anthropologist (panel pattern selection — polychrome MUST ship per M1 PR1 flag; no Pena-gift-shop tile aesthetic; workshop framing avoidance of "Moroccan-bazaar" register) + Historian (workshop framing accuracy; Madre de Deus convent vs Alfama master tradeoff; *Reabilitação Urbana* movement as anchor) + UI Designer (panel imagery in cozy palette family; mortar/wear/imperfection respected).
+- **PR8 (busking POI + paid transit):** Anthropologist (Lisboeta busking conventions — Largo do Carmo as appropriate; payout-language register; quieter-at-night norms) + Historian (Largo do Carmo description must include 1755-earthquake anchor; the Carmo ruins as the 1755 memorial) + Geographer (Largo do Carmo coordinate verification before seed insertion).
+
+### Done this session
+- M2 brainstorm with Game Designer (all 14 open questions resolved).
+- ADR-007 (player-state slice + economy calibration) — Accepted.
+- ADR-008 (rested-ness data model + three-band rendering) — Accepted.
+- ADR-009 (mini-game failure semantics — leave button + soft break prompt; pattern generalizes) — Accepted.
+- ADR-010 (structured POI availability schema) — Accepted.
+- M4 revisit hook captured explicitly so the deferred travel-arc calibration doesn't get lost.
+
+### Next: dispatch PR7
+
+PR6 landed (commit `d7a39b9`) + dynamic-next-open-time bug fix (`59c16be`):
+- New `app/lisbon/timed-advance.ts` — `startTimedAdvance(options)` helper that owns the rAF + accumulator + `document.hidden` gate pattern. Caller provides `rate`, `onMinuteCommitted`, plus either `shouldContinue` (travel mode, runs until external false) OR `totalMinutes` + `onComplete` (linger mode, runs to cap then completes). Throws on misconfiguration (developer boundary defense).
+- Travel `useEffect` and `handleLinger` rAF loop in `lisbon-map.tsx` now call the helper. Net −53 lines (70 insertions, 123 deletions).
+- Reduced-motion stays in callers (jump-cut bypasses helper). Store mutations stay in callers (composable: PR8 metro/taxi won't drain; PR7 mini-game adds flat 0.05 in `onComplete`).
+- 8 new vitest tests (suite total **324**); zero size-limit delta.
+- The helper is the canonical embodiment of ADR-005's amendment ("callers driving advance() from a continuous source own the fractional accumulator"). PR7 (mini-game) and PR8 (busking) will consume — preventing the rounding-to-zero bug that the amendment exists to prevent from re-introducing as PR7 forks an independent loop.
+
+Earlier this session — `59c16be` (dynamic-next-open bug fix) wired `nextOpenMinute` + `formatHourMinute` pure helpers into `linger-verbs.ts`'s closed-state label. Real bug from owner real-phone testing: castle's "09:00" was right by coincidence; mercado's "09:00" was wrong (mercado reopens at 10:00). Now dynamic per `availability.ranges`. The static `CLOSED_AT_NIGHT_LABEL` is retired.
+
+PR5 landed (commit `2646858`):
+- `<WalletChip />` top-left adjacent to clock — lucide `Wallet` glyph (line-stroke family match), `text-muted-foreground` (avatar owns primary teal; wallet is supporting context), Fraunces digits with tabular numerals, plain `€NN` text. **No phase tint** (the clock's tint signals time-of-day; wallet has no equivalent semantic — argued in code).
+- `<TiredChip />` standalone chip (Option B), appears only when `restedBand(rested) === 'tired'`. Lucide `Moon` (matches the clock's night-phase glyph for cozy resonance — "the HUD speaks one visual language about sleep, whether the world's sleeping or you are"). `text-primary` accent (the lone explicit ADR-008 signal earns the lead color). 250ms fade in/out at the 0.33 boundary; reduced-motion = instant.
+- Layout: clock + wallet on row 1 top-left; tired chip on row 2 below wallet when relevant; recenter stays right. After computing actual chip widths, three-on-one-row would crowd 390px.
+- Toast: inline bubble anchored directly below the tired chip (locality > §6.3's bottom-of-screen default for this affordance — reads as the player's own note-to-self, not a system alert). Auto-dismisses 3s; one-toast-at-a-time.
+- WCAG AA cleared comfortably (digits 11:1 / 10:1, primary glyph 4.9:1 / 5.9:1 across light + dark phases).
+- Whimsy Injector NOT invoked — UI Designer judged choices obvious enough; M5 Whimsy hooks left as stable seams (`data-cents` for income/expense pulse; toast as own `motion.div` for register polish).
+- 23 new vitest assertions (suite total **297**); 6 new e2e (suite total **48**); zero size-limit delta on both routes.
+- **Side-branch correction:** UI Designer initially committed to `feat/m2-pr5-hud-wallet-tired`; fast-forwarded onto `feat/m2-energy-jobs` and deleted the side-branch. M2 stays one-branch.
+
+PR4 landed (commit `26cb9bb`):
+- `LingerVerb` type extended with optional `cost` (cents). Hostel branch sets `cost: 1800` (€18 per ADR-007); other verbs leave it absent.
+- `<PoiDrawer>` subscribes to wallet via `usePlayerStore((s) => s.walletEurosCentsInternal)`, gates affordability via `canAfford`, renders `Sleep until morning · €18` when affordable / `Need €18 — try busking?` (disabled) when broke. New `data-cost` and `data-affordable` e2e attrs.
+- `handleLinger` for cost-bearing verbs: `chargeWallet(verb.cost)` up-front (gated by canAfford), then rAF advance, then `restoreRested()` at completion for hostel POIs (`selectedPoi.type === "hostel"`).
+- Awake-time rested drain wired into BOTH rAF loops (travel + linger): every minute committed → `drainRested(1/1440)`. Reduced-motion travel path also drains the equivalent total. Walking 76 game-min from airport drains ~5%.
+- Metro/taxi (PR8) will bypass the rAF loop and skip drain by construction — rest-neutral for free.
+- New `e2e/m2-hostel.spec.ts` with 5 tests covering baseline state, sleep-charges-and-restores, broke-state soft-refusal, airport-walk-drains-5%.
+- Vitest 264 → 274; size-limit ~zero-delta on both routes (~64% / 48% of ceilings).
+- **Anthropologist sanity-check on €18 dorm-bed pricing** still queued as non-blocking — owner can dispatch separately if they want a price revision after Anthropologist input.
+
+PR3 landed (commit `2795cca`) + post-PR3 fix (`cb34894`):
+- `convex/schema.ts` extended with optional `availability` field on `pois` per ADR-010 exact shape (days + ranges + optional seasonal).
+- `convex/seed.ts` rewritten as idempotent + patch-only migration: castle gets seasonal Mar–Oct 09:00–21:00 / Nov–Feb 09:00–18:00; mercado gets 10:00–24:00 base. Hostel/airport/miradouro stay availability-absent (24/7 default preserved).
+- `app/lisbon/availability.ts` new pure helper `isOpenNow(availability, em, options)` — handles 24/7 default, seasonal override, year-wrap (Nov–Feb), midnight-wrap (open 22:00 close 02:00), days-of-week filter (null at M2). 49 boundary tests.
+- `app/lisbon/game-clock-store.ts` gets `monthOf(em)` derived getter per ADR-010's 365-day abstraction. 9 boundary tests.
+- `app/lisbon/linger-verbs.ts` rewritten — signature changed `(type, em)` → `(poi: Doc<"pois">, em)`; consults `isOpenNow` for the open/closed gate; `ALWAYS_OPEN_TYPES` const **retired**. Hostel keeps per-type Sleep override.
+- 76 new vitest assertions (suite total **264**); both routes still well under size-limit ceilings.
+- Largo do Carmo's PR8 hand-off shape (`{ ranges: [{ open: 360, close: 1320 }] }` for 06:00–22:00) is already covered by `availability.test.ts` and `linger-verbs.test.ts` as the hand-off proof — the structured schema now expresses what the M1 hardcoded type rule could not.
+
+**Owner action post-merge:** run `bunx convex run seed:seedLisbon` to migrate existing rows. Mutation is idempotent + patch-only (uses `db.patch`, not `db.replace`); only the rows whose `availability` differs from the seed get patched. Re-run reports `patched: 0, skipped: 5`.
+
+**Real-phone bugfix piggybacked (`cb34894`):** avatar `<Marker>` wrapper now has `pointerEvents: "none"`. Owner reported clicks on POI markers underneath the avatar were getting intercepted by the wrapper after PR4-fixup-3's z-index lift made it sit on top. Inner `<AvatarMarker>` had `pointer-events-none` but the react-map-gl wrapper needed it too. Avatar stays visible; clicks pass through. Avatar is non-interactive by design (recenter via button, not tap).
+
+PR2 landed (commit `cc0a351`):
+- `usePlayerStore` Zustand slice sibling to `useGameClockStore` per ADR-007 / ADR-008.
+- `walletEurosCentsInternal` (integer cents, baseline 2500) + `rested` (continuous [0, 1], baseline 1.0).
+- Mutators: `chargeWallet` (throws on insufficient — boundary defense for the soft-refusal pattern), `creditWallet`, `setWallet`, `drainRested`, `restoreRested`, `setRested`.
+- Pure derived getters: `wholeEuros(cents)`, `canAfford(cents, amount)`, `restedBand(rested)`.
+- 48 new vitest assertions (suite total 188).
+- `__player` dev/test seam wired on `/lisbon` mount, mirroring `__gameClock`.
+- size-limit: zero-delta on both routes (Zustand already in shared chunk; new code below rounding boundary).
+- No UI wiring in PR2 — foundational only. PR4 (hostel sleep), PR5 (HUD), PR7 (mini-game), PR8 (transit + busking) are the consumers.
+
+PR1 landed (commit `be0bae1`):
+- `size-limit` configured in `.size-limit.cjs` with two route entries (`/` 300 KB, `/lisbon` 400 KB) plus commented placeholders for `/journal/*` (M4) and `/lisbon/jobs/*` (M2 PR7+).
+- Methodology pinned: glob-based against `.next/static/chunks/`, using webpack's filename convention (`name-<hash>.js` static, `name.<hash>.js` lazy) to exclude lazy chunks like the 266 KB MapLibre async chunk. Documented inline in the config file.
+- Cross-check vs Next's own per-route HTML script sums: −0.07% / −0.08% delta. Methodology is canonical.
+- Current measurements: `/` = 193 KB (64% of 300 KB ceiling); `/lisbon` = 191 KB (48% of 400 KB ceiling). Substantial headroom for M2 player-state + HUD + mini-game work.
+- New CI workflow at `.github/workflows/size-limit.yml` runs on PR + push to main; failures block merge per ADR-004.
+- The historical PR3 (218 KB) vs PR5-fixup-2 (270 KB) drift is resolved — both were measuring different things; the pinned methodology produces ~191 KB. Future PRs report against the same number.
+- **Turbopack-migration flag** captured inline: the methodology depends on webpack's chunk filename convention. If/when Next.js 16's `next-pwa`-replacement supports Turbopack and we drop `--webpack`, the size-limit methodology needs a revisit.
+
+PR2 (player-state Zustand slice) is next per the queued M2 PR order. Ready to dispatch.
+
+---
+
+## 2026-05-03 — M1 merged to main; M2 branch open
+
+### Active milestone
+**M2 — Sleeping, money, and a job.** Branch `feat/m2-energy-jobs`, just opened from `main` (which is now at `2a6e5f1` and includes all M1 work). No M2 code yet — this entry marks the milestone start point.
+
+**Tags landed:**
+- `m0-done` at `c303a7a` — last M0 commit on main before M1 branched
+- `m1-done` at `4965ea6` — GD review approved; the five post-tag M1 polish commits (Convex bindings, perf, avatar z-order) are merged but post-date the tag
+
+**Branches cleaned:** `feat/m1-lisbon-map` deleted local + remote. Standard one-milestone-per-branch shape from now on.
+
+**Vercel:** push to main triggered the prod deploy; M1 should be live on the prod URL within a few minutes.
+
+### M2 DoD recap (per AGENTS.md §13)
+
+- Hostel POI lets you sleep; advances time; restores rested-ness
+- HUD top bar shows wallet (local currency) and time of day; respects safe-area top inset
+- One mini-game (Lisbon azulejo tile-matching, plain React + Framer Motion + drag)
+- The mini-game uses **drag**, not click — designed for thumbs
+- Completing the job pays money. Failing it costs nothing.
+- "You're broke" path: a busking POI gives you a tiny payout for free
+- The mini-game is fully playable on a 360px-wide screen with no horizontal scroll
+
+### M2 prep order (per GD review's M2 carry-forward notes)
+
+Five things the GD review specifically queued for M2, in suggested order:
+
+1. **`size-limit` chore PR** — pin the bundle measurement methodology before mini-games add bytes. The drift between PR3-PR5 measurements (211 KB vs 273 KB on the same code) is meaningful and should stop. Should land first.
+2. **Player-state Zustand slice extraction** — `LisbonMap` has ~13 distinct `useState` + refs; M2 wallet + rested-ness + save-state will push it past the legibility ceiling. Follow the `game-clock-store.ts` template established in M1.
+3. **Structured `availability` field on Convex POI document** — replaces the `ALWAYS_OPEN_TYPES = {transit, view}` placeholder. Open/close ranges per day, possibly seasonal for places like Castelo de São Jorge.
+4. **Walking-vs-paid-transit calibration session** — at 4 game-min/real-sec walking, paid transit's value gradient is M2's calibration deliverable. Don't ship M2 mini-game without this conversation. Brainstorming territory.
+5. **Mini-game shared helper extraction** — the rAF + accumulator + `document.hidden` gate pattern from M1's travel + linger loops is reusable; document as a shared helper before M2 PR2 forks it. The job mini-game is a "longer linger that pays" — fit the existing pattern, do not invent a parallel one.
+
+### Cross-cutting from M1 still relevant
+
+- **ADR-005 amendment landed** — caller owns fractional accumulator; store commits whole minutes only.
+- **Real-phone testing discipline** is doing real work — surfaced 6+ bugs across M1 fixup rounds that headless e2e + dev-tools emulation didn't catch. Continue applying to M2.
+- **Lighthouse Mobile emulation is pessimistic** — `/lisbon` scores ~67–80 in emulation but real-iPhone-on-WiFi is the actually-meaningful number per pillar #1. Don't treat the emulation score as a ship gate beyond what makes user-facing TTI < 3s and LCP < 2.5s honestly.
+
+### Blocked on owner / next decision
+
+**M2 opening move:** the GD review's queued order suggests `size-limit` chore first, then player-state Zustand extraction. But before any of that, the brief's superpowers:brainstorming discipline says: **brainstorm M2's mechanic shape with the Game Designer first.** Specifically the walking-vs-paid-transit calibration, the wallet/rested-ness loops, and the azulejo mini-game's drag mechanic + failure model. That conversation produces the design context that shapes everything else.
+
+Ready to dispatch GD for the M2 design brainstorm when owner confirms.
+
+---
+
 ## 2026-05-03 — M1 milestone review — **APPROVED (non-blocking notes)**
 
 ### Active milestone

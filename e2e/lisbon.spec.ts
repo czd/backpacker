@@ -122,7 +122,7 @@ test.describe("/lisbon", () => {
     // `toHaveCount` polls until the assertion holds, which is the right
     // shape for a realtime query.
     const markers = page.locator('[data-testid^="poi-marker-"]');
-    await expect(markers).toHaveCount(5);
+    await expect(markers).toHaveCount(6);
   });
 
   test("each POI marker is at least 44×44px (§6.2 touch floor)", async ({
@@ -130,12 +130,13 @@ test.describe("/lisbon", () => {
   }) => {
     await page.goto("/lisbon");
     const markers = page.locator('[data-testid^="poi-marker-"]');
-    // Wait for all 5 markers to mount before measuring — under parallel
-    // test load the realtime query can resolve a beat after the dev
-    // poi-count affordance renders.
-    await expect(markers).toHaveCount(5);
+    // Wait for all 6 markers to mount before measuring (5 from M1 +
+    // Largo do Carmo from M2 PR8) — under parallel test load the
+    // realtime query can resolve a beat after the dev poi-count
+    // affordance renders.
+    await expect(markers).toHaveCount(6);
     const count = await markers.count();
-    expect(count).toBe(5);
+    expect(count).toBe(6);
     // Markers mount with a per-index 80ms stagger and a ~250ms spring; the
     // §6.2 44pt floor is the *resting* size. Pre-settle, the springs pass
     // through scale < 1 and a transient measurement would (correctly)
@@ -173,7 +174,7 @@ test.describe("/lisbon", () => {
     // Wait for markers to mount over the realtime query.
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     // Tap the Castelo de São Jorge marker (sight type, one of the seed POIs).
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await expect(castelo).toBeVisible();
@@ -196,7 +197,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await castelo.click();
     const drawerBody = page.getByTestId("poi-drawer-body");
@@ -240,7 +241,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const avatar = page.getByTestId("avatar-marker");
     await expect(avatar).toHaveAttribute("data-traveling", "false");
 
@@ -270,7 +271,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const avatar = page.getByTestId("avatar-marker");
     await expect(avatar).toHaveAttribute("data-traveling", "false");
 
@@ -345,7 +346,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const list = page.getByRole("list", { name: "Places of interest" });
     await list
       .locator("button")
@@ -362,7 +363,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await castelo.click();
 
@@ -392,7 +393,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
     await castelo.click();
     await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
@@ -417,7 +418,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // We can't easily query MapLibre layers via Playwright selectors,
     // but the trail's GeoJSON Source/Layer renders into a child of
@@ -496,7 +497,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const avatar = page.getByTestId("avatar-marker");
     const castelo = page.getByTestId("poi-marker-castelo-de-sao-jorge");
 
@@ -569,7 +570,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     await page.getByTestId("poi-marker-castelo-de-sao-jorge").click();
     await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
 
@@ -599,7 +600,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     const recenter = page.getByTestId("recenter-button");
     await expect(recenter).toBeVisible();
@@ -675,7 +676,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const recenter = page.getByTestId("recenter-button");
     await expect(recenter).toBeVisible();
 
@@ -726,7 +727,7 @@ test.describe("/lisbon", () => {
     // has fired.
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     // Allow the fit-bounds + first paint to settle.
     await page.waitForTimeout(300);
 
@@ -780,7 +781,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     // The list is `sr-only` (Tailwind's screen-reader-only utility:
     // visually hidden but in the accessibility tree). We query by ARIA
     // label, not visibility. Playwright's getByRole respects the
@@ -788,7 +789,7 @@ test.describe("/lisbon", () => {
     const list = page.getByRole("list", { name: "Places of interest" });
     await expect(list).toHaveCount(1);
     const items = list.locator("button");
-    await expect(items).toHaveCount(5);
+    await expect(items).toHaveCount(6);
     // Activating an sr-only list item opens the same drawer as a marker tap.
     // This is the keyboard-only / screen-reader path through §6.8. We use
     // `dispatchEvent('click')` rather than `click()` because Playwright's
@@ -840,7 +841,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
     const clock = page.getByTestId("time-of-day-clock");
     await expect(clock).toHaveText(/14:30 · day 1/);
 
@@ -902,36 +903,23 @@ test.describe("/lisbon", () => {
   test("linger button at day phase advances the clock by the verb's quantum", async ({
     page,
   }) => {
-    // Force the avatar to the market POI (so isAtPoi=true). Travel to
-    // the market commits via the Travel-here button; afterwards
-    // currentPoiSlug === "mercado-da-ribeira" and the linger button is
-    // now visible. Travel is ~19s under the post-`27bde8a` formula.
+    // **M2 PR7 update:** the market verb now routes to the azulejo
+    // mini-game (no clock advance — the mini-game is "taken-out-of-
+    // time" per the locked phase-agnostic 2026-05-04 decision). This
+    // test still wants to verify the *clock-advancing* linger flow,
+    // so we use the miradouro POI ("Take it in" / 30 game-min) which
+    // is the closest non-cost, non-route equivalent.
     test.setTimeout(60000);
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
-    // Force the clock to a known day-phase value so we can compute
-    // expected post-linger time exactly. Set via Zustand setState —
-    // the test imports the store via the same global window the app
-    // uses (we don't expose it on window, so we use page.evaluate to
-    // dispatch the setState through a side-channel: the Zustand store
-    // is the same module instance the React tree imports; we surface
-    // it by calling its setState via a temporarily-installed
-    // window-exposure pattern only at test-time).
-    //
-    // The cleaner path: use the browser-side fetch to import the
-    // store module directly. Vite/Next dev exposes ESM URLs but not
-    // for our own modules without a re-export. We instead use the
-    // fact that `useGameClockStore.setState(...)` runs in React
-    // Strict-mode + jsdom in unit tests; in e2e, we use a different
-    // approach: travel to the market (which advances the clock by ~10
-    // game-minutes via the rAF loop) and then linger; the *delta from
-    // pre-linger to post-linger* is what we're really testing here.
     const avatar = page.getByTestId("avatar-marker");
-    const market = page.getByTestId("poi-marker-mercado-da-ribeira");
-    await market.click();
+    const miradouro = page.getByTestId(
+      "poi-marker-miradouro-de-santa-catarina",
+    );
+    await miradouro.click();
     await expect(page.getByTestId("poi-drawer-body")).toBeVisible();
     await page.getByTestId("poi-drawer-travel-button").click();
     // Wait for travel to settle.
@@ -954,11 +942,11 @@ test.describe("/lisbon", () => {
     const beforeMatch = /(\d\d):(\d\d) · day (\d)/.exec(before ?? "");
     expect(beforeMatch).not.toBeNull();
 
-    // The linger button is now visible (avatar is at the market) and
-    // reads "Browse the stalls" (market verb at day phase). Click it.
+    // The linger button is now visible (avatar is at the miradouro)
+    // and reads "Take it in" (view verb at day phase). Click it.
     const linger = page.getByTestId("poi-drawer-linger-button");
     await expect(linger).toBeVisible();
-    await expect(linger).toHaveText(/browse the stalls/i);
+    await expect(linger).toHaveText(/take it in/i);
     await expect(linger).toBeEnabled();
     await expect(linger).toHaveAttribute("data-quantum", "30");
 
@@ -992,7 +980,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Force the clock to night phase via the page console. The store
     // is a CommonJS-style ES module imported by the app; we expose it
@@ -1035,23 +1023,29 @@ test.describe("/lisbon", () => {
       })
       .toBe("false");
 
-    // Re-set night because the travel advanced the clock past 22:00.
-    // We pin to 22:00 so the linger label assertion is deterministic.
+    // Pin to 02:00 (= 120 game-min-of-day) so the market — whose
+    // structured availability is 10:00–24:00 — is unambiguously closed.
+    // Pre-PR3 this test pinned 22:00 because the closure rule was a
+    // night-phase blanket that closed all non-hostel/transit/view POIs;
+    // post-PR3 the rule is per-POI and the market IS open at 22:00
+    // (within the 10:00–24:00 range). 02:00 is firmly closed.
     await page.evaluate(() => {
       const w = window as Window &
         typeof globalThis & {
           __gameClock?: { setEpochMinute: (m: number) => void };
         };
-      w.__gameClock?.setEpochMinute(1320);
+      w.__gameClock?.setEpochMinute(120);
     });
 
-    // Linger button should read "Closed — come back at 09:00" and be
-    // disabled. The data-enabled attribute reflects the verb's enabled
-    // flag for direct assertion.
+    // Linger button should read "Closed — come back at 10:00" and be
+    // disabled. The 10:00 (not 09:00) is per the POI's actual next-open
+    // time — the previous hardcoded "09:00" was the owner-found bug
+    // that this PR fixed. Castle's reopen IS 09:00 by coincidence;
+    // mercado's is 10:00. data-enabled reflects the verb's enabled flag.
     const linger = page.getByTestId("poi-drawer-linger-button");
     await expect(linger).toBeVisible();
     await expect(linger).toHaveText(/closed/i);
-    await expect(linger).toHaveText(/09:00/);
+    await expect(linger).toHaveText(/10:00/);
     await expect(linger).toBeDisabled();
     await expect(linger).toHaveAttribute("data-enabled", "false");
   });
@@ -1065,7 +1059,7 @@ test.describe("/lisbon", () => {
     await page.goto("/lisbon");
     await expect(
       page.locator('[data-testid^="poi-marker-"]'),
-    ).toHaveCount(5);
+    ).toHaveCount(6);
 
     // Travel to the hostel.
     const avatar = page.getByTestId("avatar-marker");

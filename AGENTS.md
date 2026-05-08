@@ -264,9 +264,10 @@ Every city ships with at least:
 
 ### 9.3 Cultural authenticity guard
 Every piece of cultural content must be reviewed by the **Anthropologist** + **Historian** + **Geographer** agents (see §11) before merge. We are *especially* careful about:
-- Avoiding stereotypes (no "Italian chef twirls mustache").
+- Avoiding stereotypes (no "Italian chef twirls mustache"). Per-culture stereotype-trap rules are codified in `DECISIONS.md` ADR-003 (see "Performer / repertoire conventions" amendment for Lisbon's no-fado-in-busking rule and the framework for adding rows per future city).
 - Avoiding sacred/sensitive content as set dressing (e.g. religious sites are described respectfully or omitted).
-- Real names are used only for genuinely public landmarks; NPCs are fictional.
+- Real names are used only for genuinely public landmarks; NPCs are fictional. ADR-003 governs the lodging-fictional default and per-culture extensions.
+- **Plaque text and inscription quotes must be verified** against current Mapillary or Wikimedia photos before merge. Prevents invented monuments (e.g., there is *no* standalone Salgueiro Maia statue at Largo do Carmo despite some popular sources implying one). Applies to POI descriptions, M3 NPC dialogue, and M4 journal notes.
 - Where we represent a culture, we research from sources *from* that culture, not just about it.
 
 ---
@@ -374,89 +375,36 @@ A PR can be rejected with the comment "not mobile-native" if it:
 - Doesn't work in standalone PWA mode.
 
 ### 12.6 Supporting documents
-This brief sits alongside three other docs at the repo root:
+This brief sits alongside several other docs at the repo root:
 - `DECISIONS.md` — Architecture Decision Records (ADRs). One ADR per significant choice; format in §12.1.
 - `STATUS.md` — current state. What's done, what's next, what's blocked. Rolling, replaced each session per §14.10.
 - `BUILD-LOG.md` — milestone narrative and agent-review highlights. Newest-first; accreting. The "what made the project richer that we want to remember" file. Add an entry when closing out a milestone or significant chunk.
+- `MILESTONES.md` — milestone DoDs (extracted from §13). Consult when starting a milestone or verifying a feature against acceptance criteria.
+- `GLOSSARY.md` — glossary (§17) and inspiration / reading list (§16). Pure reference; consult on demand.
+- `research/` — persistent capture of academic-agent research and other long-form discovery. See §12.7.
+- `CREDITS.md` — authoritative credit ledger for external material (image references, fonts, scholarship, libraries). See §12.8.
+
+### 12.7 Research capture (academic agents)
+Anthropologist, Historian, and Geographer dispatches produce knowledge that's expensive to recreate and easy to lose: agent results sit in conversation history that gets compressed; commit messages summarize; STATUS.md rolls forward each session. **Research captured in `research/` does not roll over — it accretes.**
+
+**The discipline:**
+- **Always**, when an academic agent (Anthropologist, Historian, Geographer) completes a discovery dispatch — capture the **full report verbatim** at `research/<city>/<topic>/<agent>-<YYYY-MM-DD>.md` with YAML frontmatter (`agent`, `date`, `topic`, `milestone`, `related-adrs`). Don't summarize away detail.
+- **In parallel**, write or update the topic's synthesis README at `research/<city>/<topic>/README.md` distilling the decisions surfaced for the owner.
+- **Bibliography** per topic — collect citations into `bibliography.md` rather than scattering across reports.
+- **Cross-cutting topics** (e.g., colonial-legacy ADR per §15) get a top-level folder `research/<topic>/` when the topic spans cities.
+- **Before re-dispatching** an academic agent on a topic with an existing folder, pass the path in the prompt so the new agent doesn't re-derive what's already known.
+- **Don't edit** agent reports after capture — corrections go in the topic README's synthesis. The historical record stays intact.
+
+`research/README.md` is the canonical pattern doc. Read it at the start of any session that touches a city or cross-cutting concern with an existing research folder.
+
+### 12.8 Credits ledger
+Every external resource that ships in or visibly informs the project is credited in `CREDITS.md` — image references, fonts, datasets, scholarship, libraries, audio. Add to `CREDITS.md` in the same commit that adds the asset; missing credits are bugs. Per-topic image attributions also live alongside the assets at `docs/images/<topic>/sources.md` for proximity, but `CREDITS.md` is the authoritative root index. The §9.3 cultural-authenticity discipline depends on this ledger being honest.
 
 ---
 
 ## 13. Milestones
 
-Milestones are sized for hobby pace. Don't over-commit dates; commit to scope.
-
-### M0 — Skeleton + PWA shell (1 evening of work, total)
-**Goal:** repo exists, app runs on a phone, Convex connected, installable to home screen.
-**DoD:**
-- `bun create next-app` with TS, Tailwind, App Router.
-- `bunx shadcn@latest init` with a custom cozy-friendly theme (warm neutrals, off-white background, serif headings).
-- Convex initialized; `convex/` folder committed; one `query` and one `mutation` working end-to-end.
-- `next-intl` set up with `en` locale only.
-- `next-pwa` configured: manifest, service worker, icons (192/512/maskable), `display: standalone`.
-- Viewport meta tag includes `viewport-fit=cover`. Safe-area CSS variables wired up.
-- `/` renders a placeholder splash at 390px width with the project name and a "Begin journey" button (button can be a no-op).
-- **The page is installable to a real iPhone and a real Android home screen** and launches standalone.
-- Vercel preview deploys on every PR.
-- Lighthouse mobile score: Performance ≥90, PWA ≥90, Accessibility ≥95 on the splash screen.
-- README has a one-paragraph project description, a `bun dev` quickstart, and a section on "How to test on a real phone."
-
-### M1 — One city, one map (2–3 sessions)
-**Goal:** load Lisbon on a phone, pan/zoom with thumbs, tap POIs, see info in a bottom sheet.
-**DoD:**
-- MapLibre rendering a custom warm style centered on Lisbon.
-- 5+ POIs as Convex documents with `{ city, slug, name, type, lat, lng, description, openHours }`.
-- POI markers are 44px+ and visually distinct by type.
-- Tapping a POI opens a `Drawer` (bottom sheet) at the half snap, with peek/half/full snap points.
-- The map remains visible behind the sheet at peek and half snaps.
-- Avatar marker on the map, fast-travels to the tapped POI with a Framer Motion animation along a dotted line.
-- Time-of-day clock advances when you "spend time" at a POI.
-- Day/night affects map style subtly (cooler palette at night).
-- Pinch-zoom and two-finger pan work smoothly. No accidental page-zoom or pull-to-refresh from within the map.
-
-### M2 — Sleeping, money, and a job (2–3 sessions)
-**Goal:** the survival economy works, with one mini-game on touch.
-**DoD:**
-- Hostel POI lets you sleep; advances time; restores rested-ness.
-- HUD top bar shows wallet (local currency) and time of day; respects safe-area top inset.
-- One mini-game (Lisbon azulejo tile-matching, plain React + Framer Motion + drag).
-- The mini-game uses **drag**, not click — designed for thumbs.
-- Completing the job pays money. Failing it costs nothing.
-- "You're broke" path: a busking POI gives you a tiny payout for free.
-- The mini-game is fully playable on a 360px-wide screen with no horizontal scroll.
-
-### M3 — NPCs and dialogue (2–3 sessions)
-**Goal:** the city has voices.
-**DoD:**
-- Yarn Spinner integrated; one `.yarn` file per NPC.
-- 6+ NPCs in Lisbon, each with a 5–10-line first conversation and a relationship value.
-- Dialogue presented in the full-snap bottom sheet with large readable type and tappable choice rows.
-- Dialogue choices affect future dialogue (basic flag system).
-- Cultural facts surfaced through dialogue auto-populate the Journal's Notes section.
-- Tap-to-advance is reliable; no hidden hotspots.
-
-### M4 — Journal & flights (2–3 sessions)
-**Goal:** the player can see what they've experienced and leave the city.
-**DoD:**
-- Journal view (page-styled, swipeable) with Passport, Notes, Phrasebook, People sections as horizontal swipe pages.
-- Tab indicator at the top; swipe gestures don't conflict with vertical scroll.
-- Journal works fully offline (cached by service worker).
-- Airport POI shows 3 flight options (real cities, varying prices).
-- Buying a flight transitions to a new city via a vintage-postcard cinematic.
-- New city loads with its own map, POIs, NPCs.
-- This implies city #2 (Tokyo) ships at this milestone — at least to MVP-content checklist completeness.
-
-### M5 — Polish & cozy pass (1–2 sessions)
-**Goal:** it feels like a finished thing on a phone, even if small.
-**DoD:**
-- Whimsy Injector pass on transitions, button presses, journal page-turns.
-- Sound: ambient city loops (low volume by default, muted by default until user toggles), subtle UI chimes.
-- Accessibility audit: VoiceOver and TalkBack tested on real devices.
-- `prefers-reduced-motion` honored throughout.
-- A 60-second video walkthrough exists, recorded in portrait, suitable for sharing on social.
-- City #3 (Marrakech) ships to MVP content checklist.
-- Add-to-home-screen prompt works correctly (offered after 3 POI visits, dismissible, never re-asked).
-
-**MVP = M0 through M5.** Three cities, working economy, working dialogue, working journal, polished feel, installable PWA.
+**Moved to `MILESTONES.md`** to keep this brief slim. Section number preserved; references to "AGENTS.md §13" point at `MILESTONES.md`. M0 through M5 with full DoDs live there. **MVP = M0 through M5.**
 
 ---
 
@@ -481,6 +429,7 @@ When starting a session on this project:
 ## 15. Open questions (track and resolve in `DECISIONS.md`)
 
 - **Style and tone of NPC dialogue:** literary? conversational? slightly whimsical? Pick a voice with the Narrative Designer in M3.
+- **Colonial-legacy ADR (Lisbon empire framing).** Surfaced in M1 PR1 as a future cross-cutting topic; carried forward across PR7 (azulejo / Brazilian-gold-financed-Master-Cycles connection) and PR8 (25 April 1974 / Carnation Revolution / decolonization at Largo do Carmo). **Trigger: before any Belém POI** (the *Padrão dos Descobrimentos* / *Mosteiro dos Jerónimos* / Tower of Belém register valorizes the 15th–16th c. maritime expansion; the ADR's load-bearing question lives there). **Clarification (locked 2026-05-06 per GD weigh-in):** M3 dispatches that touch decolonization personally (e.g., a Cape Verdean Lisboeta busker NPC at Largo do Carmo whose backstory carries the *retornados* arc) may proceed *without* the ADR — the personal-historical register is honest without an ADR-level structural position. M3 dispatches that require empire-structural framing (e.g., naming the colonial empire in dialogue, characterizing the imperial economy) trigger the ADR write-up before the dispatch lands. The full discussion lives in `research/lisbon/largo-do-carmo/` (Anthropologist + Historian disagreed on the trigger date; GD weighed in as team lead).
 - ~~**Map tile provider:**~~ Resolved by ADR-002 (MapTiler).
 - **City entry experience:** does landing in a city default to the top-down map, or to a welcome / home-base screen with curated actions (one of which is "explore the streets" — opening the map, perhaps as a gradient corner that expands)? Pillar #2 (calm) and the §5.1 5–15min session length may favor the welcome screen — it orients the player faster than a map and carries city flavor more strongly (city palette, illustration, ambient details, a phrase of the day). The brief's M4 vintage-postcard cinematic (§7.5, §13 M4 DoD) dismisses *somewhere* — that somewhere is the question. Decide with the Game Designer at M4 kickoff. **Routes are stable either way:** `/lisbon` can render either the map (current) or a welcome screen with the map as a contained panel; child routes (`/lisbon/jobs/<slug>`, etc.) are unaffected.
 - **Auth flow specifics:** Convex Auth's anonymous → linked story is currently fine but verify in M0.
@@ -494,33 +443,13 @@ When starting a session on this project:
 
 ## 16. Inspiration & reading list
 
-- *A Short Hike* — exemplar of cozy exploration with a soft objective.
-- *Alba: A Wildlife Adventure* — best mobile cozy game; study its session shape.
-- *Outer Wilds* — for "the world is the protagonist."
-- *Wandersong* — for warmth in NPC writing.
-- *Dorfromantik* — for "every tile feels good."
-- *Carto* — for travel-as-puzzle without timers.
-- *Where the Water Tastes Like Wine* — for storytelling-through-travel structure.
-- *Monument Valley 1 & 2* — for mobile-native interaction language and pacing.
-- Project Horseshoe 2017 cozy-game report (Tanya X. Short et al.) — design pillars source.
-- The original *Backpacker* (1995) — for skeleton, *not* for trivia loop.
-- Anthony Bourdain, *No Reservations* — for tone.
+**Moved to `GLOSSARY.md`** (Inspiration section). Section number preserved; references to "AGENTS.md §16" point there.
 
 ---
 
 ## 17. Glossary
 
-- **POI** — Point of Interest. A place on the map the player can interact with.
-- **Job** — A recurring activity that pays money via a mini-game.
-- **Journal** — The player's persistent artifact (passport, notes, phrasebook, photos, people).
-- **NPC** — Non-Player Character. A named, dialogue-bearing inhabitant of a city.
-- **Bottom sheet** — The primary mobile UI primitive in this game; a draggable panel that slides up from the bottom edge over the map.
-- **Snap point** — A resting position for a bottom sheet (peek / half / full).
-- **Safe area** — The portion of the viewport not occluded by the notch, status bar, or home indicator. All UI must respect it.
-- **PWA** — Progressive Web App. The shipping format of this game.
-- **Cozy violation** — A design choice that breaches the design pillars in §4. Grounds for PR rejection.
-- **Not mobile-native** — A design choice that breaches §6 (mobile-first design system). Also grounds for PR rejection.
-- **City flavor** — The set of unique elements (jobs, NPCs, sights, slang, palette) that distinguish one city from another.
+**Moved to `GLOSSARY.md`** (Glossary section). Section number preserved; references to "AGENTS.md §17" point there.
 
 ---
 
